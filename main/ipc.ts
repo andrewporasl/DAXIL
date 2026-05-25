@@ -4,6 +4,7 @@ import * as fs from 'fs'
 import type { WebContents } from 'electron'
 import { readMetadata } from './ffprobe'
 import { runFFmpeg, cancelFFmpeg, generateThumbnails } from './ffmpeg'
+import { getDefaultBinarySetting, resolveBinaryPath } from './binaries'
 import type { ExportOptions, AppSettings, FFmpegEvent } from '../shared/types'
 
 let store: { get: (key: string, def?: unknown) => unknown; set: (key: string, val: unknown) => void }
@@ -13,8 +14,8 @@ async function getStore() {
     const Store = (await import('electron-store')).default
     const s = new Store<AppSettings>({
       defaults: {
-        ffmpegPath: 'ffmpeg',
-        ffprobePath: 'ffprobe',
+        ffmpegPath: getDefaultBinarySetting(),
+        ffprobePath: getDefaultBinarySetting(),
         defaultOutputDir: app.getPath('videos')
       }
     })
@@ -41,18 +42,18 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('ffprobe:metadata', async (_, filePath: string) => {
     const s = await getStore()
-    return readMetadata(filePath, s.get('ffprobePath', 'ffprobe') as string)
+    return readMetadata(filePath, resolveBinaryPath('ffprobe', s.get('ffprobePath', getDefaultBinarySetting()) as string))
   })
 
   ipcMain.handle('ffmpeg:thumbnails', async (_, filePath: string, duration: number, count: number) => {
     const s = await getStore()
-    return generateThumbnails(filePath, duration, count, s.get('ffmpegPath', 'ffmpeg') as string)
+    return generateThumbnails(filePath, duration, count, resolveBinaryPath('ffmpeg', s.get('ffmpegPath', getDefaultBinarySetting()) as string))
   })
 
   ipcMain.handle('ffmpeg:run', async (event, options: ExportOptions) => {
     const s = await getStore()
-    const ffmpegPath = s.get('ffmpegPath', 'ffmpeg') as string
-    const ffprobePath = s.get('ffprobePath', 'ffprobe') as string
+    const ffmpegPath = resolveBinaryPath('ffmpeg', s.get('ffmpegPath', getDefaultBinarySetting()) as string)
+    const ffprobePath = resolveBinaryPath('ffprobe', s.get('ffprobePath', getDefaultBinarySetting()) as string)
     const meta = await readMetadata(options.inputPath, ffprobePath)
     const sender: WebContents = event.sender
 
@@ -77,16 +78,16 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('settings:get', async () => {
     const s = await getStore()
     return {
-      ffmpegPath: s.get('ffmpegPath', 'ffmpeg'),
-      ffprobePath: s.get('ffprobePath', 'ffprobe'),
+      ffmpegPath: s.get('ffmpegPath', getDefaultBinarySetting()),
+      ffprobePath: s.get('ffprobePath', getDefaultBinarySetting()),
       defaultOutputDir: s.get('defaultOutputDir', app.getPath('videos'))
     }
   })
 
   ipcMain.handle('settings:set', async (_, settings: Partial<AppSettings>) => {
     const s = await getStore()
-    if (settings.ffmpegPath !== undefined) s.set('ffmpegPath', settings.ffmpegPath)
-    if (settings.ffprobePath !== undefined) s.set('ffprobePath', settings.ffprobePath)
+    if (settings.ffmpegPath !== undefined) s.set('ffmpegPath', settings.ffmpegPath.trim() || getDefaultBinarySetting())
+    if (settings.ffprobePath !== undefined) s.set('ffprobePath', settings.ffprobePath.trim() || getDefaultBinarySetting())
     if (settings.defaultOutputDir !== undefined) s.set('defaultOutputDir', settings.defaultOutputDir)
   })
 }

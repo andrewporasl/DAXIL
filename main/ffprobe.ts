@@ -81,7 +81,7 @@ export function readMetadata(filePath: string, ffprobePath = 'ffprobe'): Promise
     })
 
     proc.on('error', (err) => {
-      reject(new Error(`Failed to spawn ffprobe: ${err.message}. Make sure ffprobe is installed and in your PATH.`))
+      reject(new Error(`Failed to spawn ffprobe: ${err.message}. Check your DAXIL settings if you need to override the bundled binary path.`))
     })
   })
 }

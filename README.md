@@ -2,6 +2,8 @@
 
 Minimal local video trimming, compression, and export for desktop. DAXIL runs entirely on your machine with Electron, React, and FFmpeg, so there are no uploads, accounts, or cloud processing steps in the loop.
 
+Prebuilt GitHub Releases are installable desktop apps and include bundled `ffmpeg` / `ffprobe`, so end users do not need to install extra runtime requirements.
+
 ## What It Does
 
 - Load a local video from the large `+` add target, drag and drop, or the top-bar `Open Video` action
@@ -30,31 +32,10 @@ If you want to work on a second clip without replacing the current one, use `New
 
 ## Requirements
 
-- Node.js `18+`
-- `ffmpeg`
-- `ffprobe`
+- For developers building from source: Node.js `18+`
+- For end users installing a release build: no separate runtime dependencies
 
-### Installing FFmpeg on Windows
-
-Recommended:
-
-```bash
-winget install Gyan.FFmpeg
-```
-
-Manual install:
-
-- Download from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/)
-- Add the `bin/` directory to your `PATH`
-
-Verify the install:
-
-```bash
-ffmpeg -version
-ffprobe -version
-```
-
-If FFmpeg is not available on your `PATH`, open DAXIL Settings and point the app to the full executable paths.
+If you want to override the bundled binaries, DAXIL Settings lets you provide custom `ffmpeg` and `ffprobe` paths.
 
 ## Development
 

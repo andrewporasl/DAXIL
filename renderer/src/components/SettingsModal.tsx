@@ -7,8 +7,8 @@ interface Props {
 
 export default function SettingsModal({ onClose }: Props) {
   const [settings, setSettings] = useState<AppSettings>({
-    ffmpegPath: 'ffmpeg',
-    ffprobePath: 'ffprobe',
+    ffmpegPath: 'auto',
+    ffprobePath: 'auto',
     defaultOutputDir: ''
   })
   const [saved, setSaved] = useState(false)
@@ -67,10 +67,10 @@ export default function SettingsModal({ onClose }: Props) {
           <input
             value={settings.ffmpegPath}
             onChange={(event) => setSettings((state) => ({ ...state, ffmpegPath: event.target.value }))}
-            placeholder="ffmpeg"
+            placeholder="auto"
           />
           <div className="surface-note" style={{ marginTop: 6 }}>
-            Leave this as "ffmpeg" when the binary is already available in your PATH.
+            Leave this as `auto` to use the bundled FFmpeg in release builds, or enter a custom path to override it.
           </div>
         </div>
 
@@ -79,8 +79,11 @@ export default function SettingsModal({ onClose }: Props) {
           <input
             value={settings.ffprobePath}
             onChange={(event) => setSettings((state) => ({ ...state, ffprobePath: event.target.value }))}
-            placeholder="ffprobe"
+            placeholder="auto"
           />
+          <div className="surface-note" style={{ marginTop: 6 }}>
+            `auto` uses the bundled FFprobe when available.
+          </div>
         </div>
 
         <div>
