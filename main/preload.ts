@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openFolder: (folderPath: string): Promise<void> =>
     ipcRenderer.invoke('shell:open-folder', folderPath),
 
+  openNewWindow: (): Promise<void> =>
+    ipcRenderer.invoke('window:new'),
+
   getSettings: (): Promise<AppSettings> =>
     ipcRenderer.invoke('settings:get'),
 

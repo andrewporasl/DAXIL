@@ -1,4 +1,4 @@
-import { app, BrowserWindow, protocol } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
 import { registerIpcHandlers } from './ipc'
@@ -116,6 +116,9 @@ app.whenReady().then(() => {
   })
 
   registerIpcHandlers()
+  ipcMain.handle('window:new', () => {
+    createWindow()
+  })
   createWindow()
 
   app.on('activate', () => {

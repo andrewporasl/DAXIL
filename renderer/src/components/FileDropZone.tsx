@@ -3,9 +3,10 @@ import React, { useCallback, useState } from 'react'
 interface Props {
   onFilePicked: (path: string) => void
   disabled?: boolean
+  hasVideo?: boolean
 }
 
-export default function FileDropZone({ onFilePicked, disabled }: Props) {
+export default function FileDropZone({ onFilePicked, disabled, hasVideo }: Props) {
   const [isDragging, setIsDragging] = useState(false)
 
   const handleClick = useCallback(async () => {
@@ -24,44 +25,44 @@ export default function FileDropZone({ onFilePicked, disabled }: Props) {
     if (filePath) onFilePicked(filePath)
   }, [disabled, onFilePicked])
 
+  const label = disabled
+    ? 'Working on current clip'
+    : isDragging
+      ? 'Drop video to load'
+      : hasVideo
+        ? 'Add or replace video'
+        : 'Add video'
+
+  const note = disabled
+    ? 'Please wait until the current task finishes.'
+    : isDragging
+      ? 'Release to load this file into the editor.'
+      : hasVideo
+        ? 'Click the plus or drop another file here.'
+        : 'Click the plus or drop a local video here.'
+
   return (
     <div
-      onClick={handleClick}
+      className="dropzone-simple"
       onDragOver={(event) => {
         event.preventDefault()
         if (!disabled) setIsDragging(true)
       }}
       onDragLeave={() => setIsDragging(false)}
       onDrop={handleDrop}
-      style={{
-        border: `1px solid ${isDragging ? 'var(--accent)' : 'var(--border-strong)'}`,
-        borderRadius: 'var(--radius)',
-        background: isDragging ? 'var(--accent-soft)' : 'var(--panel)',
-        padding: 16,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.55 : 1,
-        transition: 'background-color 0.18s ease, border-color 0.18s ease'
-      }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
-        <div className="section-title">Source Clip</div>
-        <div className={`badge ${isDragging ? 'badge-accent' : ''}`}>
-          {disabled ? 'Busy' : isDragging ? 'Drop file' : 'Local only'}
-        </div>
-      </div>
+      <button
+        type="button"
+        className={`dropzone-plate ${isDragging ? 'is-dragging' : ''}`}
+        onClick={handleClick}
+        disabled={disabled}
+        aria-label={label}
+      >
+        <span className="dropzone-plus">{isDragging ? '×' : '+'}</span>
+      </button>
 
-      <div style={{ fontFamily: 'var(--serif)', fontSize: 28, lineHeight: 0.96, marginBottom: 8 }}>
-        Load footage
-      </div>
-      <div className="surface-note" style={{ marginBottom: 14 }}>
-        Click to browse or drag a file directly into the editor.
-      </div>
-
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {['MP4', 'MOV', 'MKV', 'WEBM'].map((label) => (
-          <div key={label} className="badge">{label}</div>
-        ))}
-      </div>
+      <div className="dropzone-label">{label}</div>
+      <div className="dropzone-note">{note}</div>
     </div>
   )
 }

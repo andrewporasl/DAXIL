@@ -1,11 +1,19 @@
 appId: com.daxil.videoeditor
 productName: DAXIL
+artifactName: DAXIL-${version}-${os}-${arch}.${ext}
 directories:
   output: dist
   buildResources: resources
 files:
   - out/**/*
   - "!out/**/*.map"
+asar: true
+mac:
+  category: public.app-category.video
+  target:
+    - target: dmg
+    - target: zip
+  icon: resources/icon.icns
 win:
   target:
     - target: nsis

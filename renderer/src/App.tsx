@@ -50,6 +50,7 @@ export default function App() {
   const [exportError, setExportError] = useState<string | null>(null)
 
   const [showSettings, setShowSettings] = useState(false)
+  const isBusy = exportState === 'running' || loadingMeta
 
   useEffect(() => {
     window.electronAPI.getSettings().then((settings) => {
@@ -113,6 +114,16 @@ export default function App() {
       }
     })
   }, [metadata])
+
+  const handleOpenVideo = useCallback(async () => {
+    if (isBusy) return
+    const nextFilePath = await window.electronAPI.openFile()
+    if (nextFilePath) await handleFilePicked(nextFilePath)
+  }, [handleFilePicked, isBusy])
+
+  const handleOpenNewWindow = useCallback(() => {
+    void window.electronAPI.openNewWindow()
+  }, [])
 
   const estimatedSize = metadata
     ? exportMode === 'audio'
@@ -192,16 +203,25 @@ export default function App() {
   return (
     <div style={{ height: '100vh', overflow: 'hidden', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <header className="card-soft" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 60 }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>Daxil</div>
-          <div className="surface-note" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {metadata ? metadata.fileName : 'Local video trimmer and exporter'}
+        <div className="brand-lockup">
+          <div className="brand-mark" aria-hidden="true" />
+          <div className="brand-copy">
+            <div className="brand-wordmark">DAXIL</div>
+            <div className="brand-subtitle">
+              {metadata ? metadata.fileName : 'Trim, compress, and export local video.'}
+            </div>
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           {metadata && <div className="badge badge-accent">{formatDuration(selectionDuration)}</div>}
           {metadata && <div className="badge">{formatBytes(estimatedSize)}</div>}
+          <button className="btn-primary" onClick={handleOpenVideo} disabled={isBusy}>
+            {metadata ? 'Open Another' : 'Open Video'}
+          </button>
+          <button className="btn-ghost" onClick={handleOpenNewWindow}>
+            New Window
+          </button>
           <button className="btn-ghost" onClick={() => setShowSettings(true)}>
             Settings
           </button>
@@ -210,7 +230,11 @@ export default function App() {
 
       <main style={{ display: 'grid', gridTemplateColumns: '236px minmax(0, 1fr) 316px', gap: 12, flex: 1, minHeight: 0 }}>
         <aside className="card-soft" style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}>
-          <FileDropZone onFilePicked={handleFilePicked} disabled={exportState === 'running'} />
+          <FileDropZone
+            onFilePicked={handleFilePicked}
+            disabled={isBusy}
+            hasVideo={Boolean(filePath)}
+          />
 
           {loadingMeta && (
             <div className="card">

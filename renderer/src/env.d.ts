@@ -13,6 +13,7 @@ declare global {
       cancelFFmpeg: () => Promise<void>
       onFFmpegEvent: (callback: (event: FFmpegEvent) => void) => () => void
       openFolder: (folderPath: string) => Promise<void>
+      openNewWindow: () => Promise<void>
       getSettings: () => Promise<AppSettings>
       saveSettings: (settings: Partial<AppSettings>) => Promise<void>
     }

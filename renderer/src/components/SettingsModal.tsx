@@ -48,10 +48,13 @@ export default function SettingsModal({ onClose }: Props) {
         style={{ width: 460, display: 'flex', flexDirection: 'column', gap: 16 }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start' }}>
-          <div>
-            <div className="section-title" style={{ marginBottom: 8 }}>Preferences</div>
-            <div style={{ fontFamily: 'var(--serif)', fontSize: 30, lineHeight: 1 }}>
-              Daxil settings
+          <div className="brand-lockup">
+            <div className="brand-mark" aria-hidden="true" />
+            <div className="brand-copy">
+              <div className="section-title" style={{ marginBottom: 8 }}>Preferences</div>
+              <div className="brand-modal-title">
+                DAXIL SETTINGS
+              </div>
             </div>
           </div>
           <button className="btn-ghost" onClick={onClose}>
