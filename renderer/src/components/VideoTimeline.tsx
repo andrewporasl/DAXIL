@@ -14,45 +14,74 @@ interface Props {
 
 type DragTarget = 'start' | 'end' | null
 
-const STRIP_HEIGHT = 60
-const HANDLE_W = 4
+const STRIP_HEIGHT = 68
+const RAIL_HEIGHT = 16
+const HANDLE_W = 6
 
 export default function VideoTimeline({
-  filePath, duration, thumbnails, start, end, currentTime, onTimeUpdate, onTrimChange
+  filePath,
+  duration,
+  thumbnails,
+  start,
+  end,
+  currentTime,
+  onTimeUpdate,
+  onTrimChange
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const stripRef = useRef<HTMLDivElement>(null)
   const [dragging, setDragging] = useState<DragTarget>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
 
-  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+  const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value))
 
-  const posFromClientX = useCallback((clientX: number): number => {
-    const rect = stripRef.current?.getBoundingClientRect()
-    if (!rect || duration <= 0) return 0
-    return clamp((clientX - rect.left) / rect.width * duration, 0, duration)
+  const posFromClientX = useCallback((clientX: number, rect: DOMRect): number => {
+    if (duration <= 0) return 0
+    return clamp(((clientX - rect.left) / rect.width) * duration, 0, duration)
   }, [duration])
 
-  // Drag handlers
+  const setVideoTime = useCallback((time: number) => {
+    const next = clamp(time, 0, duration || 0)
+    if (videoRef.current) videoRef.current.currentTime = next
+    onTimeUpdate(next)
+  }, [duration, onTimeUpdate])
+
+  const togglePlayback = useCallback(async () => {
+    const video = videoRef.current
+    if (!video) return
+
+    if (video.paused) {
+      if (currentTime < start || currentTime > end) setVideoTime(start)
+      try {
+        await video.play()
+      } catch {
+        // no-op
+      }
+    } else {
+      video.pause()
+    }
+  }, [currentTime, end, setVideoTime, start])
+
+  const seekBy = useCallback((delta: number) => {
+    setVideoTime(currentTime + delta)
+  }, [currentTime, setVideoTime])
+
   useEffect(() => {
     if (!dragging) return
 
-    const onMove = (e: MouseEvent) => {
-      const t = posFromClientX(e.clientX)
-      let newStart = start
-      let newEnd = end
+    const onMove = (event: MouseEvent) => {
+      const rect = stripRef.current?.getBoundingClientRect()
+      if (!rect) return
 
-      if (dragging === 'start') {
-        newStart = clamp(t, 0, end - 0.1)
-      } else {
-        newEnd = clamp(t, start + 0.1, duration)
-      }
+      const time = posFromClientX(event.clientX, rect)
+      let nextStart = start
+      let nextEnd = end
 
-      onTrimChange(newStart, newEnd)
+      if (dragging === 'start') nextStart = clamp(time, 0, end - 0.1)
+      else nextEnd = clamp(time, start + 0.1, duration)
 
-      // Seek video to show the frame at the handle position
-      if (videoRef.current) {
-        videoRef.current.currentTime = dragging === 'start' ? newStart : newEnd
-      }
+      onTrimChange(nextStart, nextEnd)
+      setVideoTime(dragging === 'start' ? nextStart : nextEnd)
     }
 
     const onUp = () => setDragging(null)
@@ -63,284 +92,214 @@ export default function VideoTimeline({
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
     }
-  }, [dragging, start, end, duration, posFromClientX, onTrimChange])
+  }, [dragging, duration, end, onTrimChange, posFromClientX, setVideoTime, start])
 
-  const handleStripClick = (e: React.MouseEvent) => {
-    if (dragging) return
-    const t = posFromClientX(e.clientX)
-    const distStart = Math.abs(t - start)
-    const distEnd = Math.abs(t - end)
-    if (distStart <= distEnd) {
-      onTrimChange(clamp(t, 0, end - 0.1), end)
-    } else {
-      onTrimChange(start, clamp(t, start + 0.1, duration))
+  useEffect(() => {
+    if (!isPlaying || duration <= 0) return
+    if (currentTime >= end && end < duration - 0.05) {
+      videoRef.current?.pause()
+      setIsPlaying(false)
+      setVideoTime(end)
     }
-    if (videoRef.current) videoRef.current.currentTime = t
+  }, [currentTime, duration, end, isPlaying, setVideoTime])
+
+  const handlePreviewScrub = (event: React.MouseEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    setVideoTime(posFromClientX(event.clientX, rect))
   }
 
-  const src = filePath ? `safe-file:///${filePath.replace(/\\/g, '/')}` : null
+  const handleStripClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (dragging) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    setVideoTime(posFromClientX(event.clientX, rect))
+  }
 
+  const src = filePath ? `safe-file://video?path=${encodeURIComponent(filePath)}` : null
   const startPct = duration > 0 ? (start / duration) * 100 : 0
   const endPct = duration > 0 ? (end / duration) * 100 : 100
   const playPct = duration > 0 ? clamp((currentTime / duration) * 100, 0, 100) : 0
+  const selectionPct = Math.max(endPct - startPct, 0)
 
-  const isFullRange = start <= 0.05 && end >= duration - 0.05
+  if (!src) {
+    return (
+      <div className="card" style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>No preview loaded</div>
+          <div className="surface-note">Choose a file to open the video and timeline.</div>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div style={{
-      borderRadius: 'var(--radius)',
-      overflow: 'hidden',
-      border: '1px solid var(--border)',
-      background: '#000',
-      userSelect: 'none'
-    }}>
-      {/* Video */}
-      {!src ? (
-        <div style={{
-          aspectRatio: '16/9',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'var(--text-dim)',
-          fontSize: 13,
-          background: 'var(--surface)'
-        }}>
-          Select a video to preview
+    <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div className="badge badge-accent">In {formatDuration(start)}</div>
+          <div className="badge badge-accent">Out {formatDuration(end)}</div>
+          <div className="badge">Playhead {formatDuration(currentTime)}</div>
         </div>
-      ) : (
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-ghost" onClick={() => onTrimChange(currentTime, end)}>Set In</button>
+          <button className="btn-ghost" onClick={() => onTrimChange(start, currentTime)}>Set Out</button>
+          <button className="btn-ghost" onClick={() => onTrimChange(0, duration)}>Reset</button>
+        </div>
+      </div>
+
+      <div
+        style={{
+          position: 'relative',
+          flex: 1,
+          minHeight: 0,
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)',
+          background: '#0a0c12',
+          overflow: 'hidden'
+        }}
+      >
         <video
+          key={src}
           ref={videoRef}
           src={src}
-          controls
-          onTimeUpdate={(e) => onTimeUpdate((e.target as HTMLVideoElement).currentTime)}
+          playsInline
+          preload="metadata"
+          onClick={togglePlayback}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onEnded={() => setIsPlaying(false)}
+          onTimeUpdate={(event) => onTimeUpdate((event.target as HTMLVideoElement).currentTime)}
           style={{
             width: '100%',
-            aspectRatio: '16/9',
+            height: '100%',
+            objectFit: 'contain',
             display: 'block',
-            background: '#000',
-            borderRadius: 0
+            cursor: 'pointer'
           }}
         />
-      )}
 
-      {/* Timeline strip */}
-      {src && duration > 0 && (
+        {!isPlaying && (
+          <button
+            className="btn-ghost"
+            onClick={togglePlayback}
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: 'rgba(23, 27, 36, 0.9)'
+            }}
+          >
+            {currentTime > 0 ? 'Resume' : 'Play'}
+          </button>
+        )}
+      </div>
+
+      <div className="transport-row">
+        <div className="transport-group">
+          <button className="transport-button primary" onClick={togglePlayback}>
+            {isPlaying ? 'Pause' : 'Play'}
+          </button>
+          <button className="transport-button" onClick={() => seekBy(-5)}>-5s</button>
+          <button className="transport-button" onClick={() => seekBy(5)}>+5s</button>
+        </div>
+
         <div
-          ref={stripRef}
-          onClick={handleStripClick}
+          onClick={handlePreviewScrub}
           style={{
-            position: 'relative',
-            height: STRIP_HEIGHT,
-            background: '#080808',
-            borderTop: '1px solid #1a1a1a',
-            cursor: 'pointer',
-            overflow: 'hidden'
+            flex: 1,
+            height: 10,
+            borderRadius: 999,
+            border: '1px solid var(--border)',
+            background: 'var(--panel-3)',
+            overflow: 'hidden',
+            cursor: 'pointer'
           }}
         >
-          {/* Thumbnail strip */}
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            overflow: 'hidden'
-          }}>
-            {thumbnails.length > 0
-              ? thumbnails.map((thumb, i) => (
-                <div
-                  key={i}
-                  style={{
-                    flex: 1,
-                    flexShrink: 0,
-                    backgroundImage: thumb ? `url(${thumb})` : undefined,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                    background: thumb ? undefined : 'var(--surface2)'
-                  }}
-                />
-              ))
-              : (
-                <div style={{
-                  flex: 1,
-                  background: 'var(--surface2)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>Loading previews...</span>
-                </div>
-              )
-            }
-          </div>
+          <div style={{ width: `${playPct}%`, height: '100%', background: 'linear-gradient(90deg, var(--accent), var(--accent-2))' }} />
+        </div>
 
-          {/* Dim outside selection — left */}
-          <div style={{
+        <div style={{ minWidth: 92, textAlign: 'right', color: 'var(--text-muted)', fontSize: 11 }}>
+          {formatDuration(currentTime)} / {formatDuration(duration)}
+        </div>
+      </div>
+
+      <div
+        ref={stripRef}
+        onClick={handleStripClick}
+        style={{
+          position: 'relative',
+          height: STRIP_HEIGHT,
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)',
+          background: 'var(--panel-2)',
+          overflow: 'hidden',
+          cursor: 'pointer'
+        }}
+      >
+        <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: STRIP_HEIGHT - RAIL_HEIGHT, display: 'flex', overflow: 'hidden' }}>
+          {thumbnails.length > 0 ? thumbnails.map((thumb, index) => (
+            <div
+              key={index}
+              style={{
+                flex: 1,
+                backgroundImage: thumb ? `url(${thumb})` : undefined,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                borderRight: index === thumbnails.length - 1 ? 'none' : '1px solid rgba(60, 70, 95, 0.4)'
+              }}
+            />
+          )) : (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 11 }}>
+              Building timeline...
+            </div>
+          )}
+        </div>
+
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: RAIL_HEIGHT, background: 'var(--panel-3)', borderTop: '1px solid var(--border)' }} />
+        <div style={{ position: 'absolute', left: 0, width: `${startPct}%`, top: 0, bottom: 0, background: 'rgba(16, 19, 26, 0.46)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', left: `${endPct}%`, right: 0, top: 0, bottom: 0, background: 'rgba(16, 19, 26, 0.46)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', left: `${startPct}%`, width: `${selectionPct}%`, bottom: 0, height: RAIL_HEIGHT, background: 'var(--accent-dim)', borderTop: '1px solid var(--accent-border)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', left: `${playPct}%`, top: 0, bottom: 0, width: 2, background: 'var(--text)', transform: 'translateX(-50%)', pointerEvents: 'none', zIndex: 4 }} />
+
+        <div
+          onMouseDown={(event) => {
+            event.stopPropagation()
+            setDragging('start')
+          }}
+          style={{
             position: 'absolute',
-            left: 0,
-            width: `${startPct}%`,
-            top: 0,
+            left: `${startPct}%`,
             bottom: 0,
-            background: 'rgba(0,0,0,0.65)',
-            pointerEvents: 'none'
-          }} />
+            width: HANDLE_W + 12,
+            height: RAIL_HEIGHT + 14,
+            transform: 'translateX(-50%)',
+            cursor: 'ew-resize',
+            zIndex: 6
+          }}
+        >
+          <div style={{ position: 'absolute', left: '50%', top: 6, bottom: 0, width: HANDLE_W, transform: 'translateX(-50%)', borderRadius: 999, background: 'var(--accent)' }} />
+        </div>
 
-          {/* Dim outside selection — right */}
-          <div style={{
+        <div
+          onMouseDown={(event) => {
+            event.stopPropagation()
+            setDragging('end')
+          }}
+          style={{
             position: 'absolute',
             left: `${endPct}%`,
-            right: 0,
-            top: 0,
             bottom: 0,
-            background: 'rgba(0,0,0,0.65)',
-            pointerEvents: 'none'
-          }} />
-
-          {/* Selection top/bottom border */}
-          {!isFullRange && (
-            <div style={{
-              position: 'absolute',
-              left: `${startPct}%`,
-              width: `${endPct - startPct}%`,
-              top: 0,
-              bottom: 0,
-              borderTop: `2px solid var(--accent)`,
-              borderBottom: `2px solid var(--accent)`,
-              pointerEvents: 'none'
-            }} />
-          )}
-
-          {/* Playhead */}
-          <div style={{
-            position: 'absolute',
-            left: `${playPct}%`,
-            top: 0,
-            bottom: 0,
-            width: 2,
-            background: '#fff',
-            opacity: 0.8,
+            width: HANDLE_W + 12,
+            height: RAIL_HEIGHT + 14,
             transform: 'translateX(-50%)',
-            pointerEvents: 'none',
-            zIndex: 4
-          }} />
-
-          {/* Start handle — bracket shape */}
-          <div
-            onMouseDown={(e) => { e.stopPropagation(); setDragging('start') }}
-            style={{
-              position: 'absolute',
-              left: `${startPct}%`,
-              top: 0,
-              bottom: 0,
-              width: HANDLE_W + 6,
-              transform: 'translateX(-50%)',
-              cursor: 'ew-resize',
-              zIndex: 5,
-              display: 'flex',
-              alignItems: 'stretch'
-            }}
-          >
-            {/* Vertical bar */}
-            <div style={{
-              width: HANDLE_W,
-              background: 'var(--accent)',
-              borderRadius: '2px 0 0 2px',
-              position: 'relative'
-            }}>
-              {/* Top cap */}
-              <div style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: 10,
-                height: HANDLE_W,
-                background: 'var(--accent)',
-                borderRadius: '2px 2px 0 0'
-              }} />
-              {/* Bottom cap */}
-              <div style={{
-                position: 'absolute',
-                bottom: 0,
-                left: 0,
-                width: 10,
-                height: HANDLE_W,
-                background: 'var(--accent)',
-                borderRadius: '0 0 2px 2px'
-              }} />
-            </div>
-          </div>
-
-          {/* End handle — bracket shape */}
-          <div
-            onMouseDown={(e) => { e.stopPropagation(); setDragging('end') }}
-            style={{
-              position: 'absolute',
-              left: `${endPct}%`,
-              top: 0,
-              bottom: 0,
-              width: HANDLE_W + 6,
-              transform: 'translateX(-50%)',
-              cursor: 'ew-resize',
-              zIndex: 5,
-              display: 'flex',
-              alignItems: 'stretch',
-              justifyContent: 'flex-end'
-            }}
-          >
-            <div style={{
-              width: HANDLE_W,
-              background: 'var(--accent)',
-              borderRadius: '0 2px 2px 0',
-              position: 'relative'
-            }}>
-              <div style={{
-                position: 'absolute',
-                top: 0,
-                right: 0,
-                width: 10,
-                height: HANDLE_W,
-                background: 'var(--accent)',
-                borderRadius: '2px 2px 0 0'
-              }} />
-              <div style={{
-                position: 'absolute',
-                bottom: 0,
-                right: 0,
-                width: 10,
-                height: HANDLE_W,
-                background: 'var(--accent)',
-                borderRadius: '0 0 2px 2px'
-              }} />
-            </div>
-          </div>
-
-          {/* Time labels */}
-          <div style={{ position: 'absolute', bottom: 3, left: 0, right: 0, pointerEvents: 'none', zIndex: 3 }}>
-            <span style={{
-              position: 'absolute',
-              left: `${startPct}%`,
-              transform: 'translateX(6px)',
-              fontSize: 10,
-              color: 'rgba(255,255,255,0.8)',
-              fontVariantNumeric: 'tabular-nums',
-              textShadow: '0 1px 3px rgba(0,0,0,0.8)',
-              whiteSpace: 'nowrap'
-            }}>
-              {formatDuration(start)}
-            </span>
-            <span style={{
-              position: 'absolute',
-              left: `${endPct}%`,
-              transform: 'translateX(calc(-100% - 6px))',
-              fontSize: 10,
-              color: 'rgba(255,255,255,0.8)',
-              fontVariantNumeric: 'tabular-nums',
-              textShadow: '0 1px 3px rgba(0,0,0,0.8)',
-              whiteSpace: 'nowrap'
-            }}>
-              {formatDuration(end)}
-            </span>
-          </div>
+            cursor: 'ew-resize',
+            zIndex: 6
+          }}
+        >
+          <div style={{ position: 'absolute', left: '50%', top: 6, bottom: 0, width: HANDLE_W, transform: 'translateX(-50%)', borderRadius: 999, background: 'var(--accent)' }} />
         </div>
-      )}
+      </div>
     </div>
   )
 }

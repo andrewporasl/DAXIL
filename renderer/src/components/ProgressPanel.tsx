@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react'
 import type { ProgressEvent } from '../../../../shared/types'
+import { formatDuration } from '../lib/sizeEstimator'
 
 interface Props {
   progress: ProgressEvent | null
@@ -18,56 +19,48 @@ export default function ProgressPanel({ progress, logLines, onCancel, exporting 
   }, [logLines])
 
   const percent = progress?.percent ?? 0
+  const current = progress?.currentSeconds ?? 0
+  const total = progress?.totalSeconds ?? 0
 
   return (
-    <div className="card">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          {exporting ? `Processing — ${percent}%` : 'Processing'}
+    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: 10 }}>
+        <div>
+          <div className="section-title" style={{ marginBottom: 6 }}>Rendering</div>
+          <div style={{ fontFamily: 'var(--serif)', fontSize: 28, lineHeight: 1, marginBottom: 4 }}>
+            {percent}%
+          </div>
+          <div className="surface-note">
+            {total > 0 ? `${formatDuration(current)} of ${formatDuration(total)}` : 'Preparing FFmpeg output'}
+          </div>
         </div>
+
         {exporting && (
-          <button
-            onClick={onCancel}
-            className="btn-ghost"
-            style={{ fontSize: 11, padding: '3px 10px', borderColor: 'var(--danger)', color: 'var(--danger)' }}
-          >
+          <button className="btn-ghost" onClick={onCancel}>
             Cancel
           </button>
         )}
       </div>
 
-      <div style={{ height: 3, background: 'var(--surface2)', borderRadius: 2, overflow: 'hidden', marginBottom: 12 }}>
-        <div style={{
-          height: '100%',
-          width: `${percent}%`,
-          background: 'var(--accent)',
-          borderRadius: 2,
-          transition: 'width 0.3s ease'
-        }} />
+      <div style={{ height: 8, borderRadius: 999, background: 'var(--panel-3)', overflow: 'hidden', border: '1px solid var(--border)' }}>
+        <div
+          style={{
+            width: `${percent}%`,
+            height: '100%',
+            background: 'var(--accent)',
+            transition: 'width 0.25s ease'
+          }}
+        />
       </div>
 
       <details>
-        <summary style={{ cursor: 'pointer', fontSize: 11, color: 'var(--text-dim)', userSelect: 'none', marginBottom: 6 }}>
-          FFmpeg output
+        <summary style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: 11, fontWeight: 600 }}>
+          FFmpeg log
         </summary>
-        <div
-          ref={logRef}
-          style={{
-            background: '#0a0a0d',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-sm)',
-            padding: '8px 10px',
-            maxHeight: 140,
-            overflowY: 'auto',
-            fontFamily: 'monospace',
-            fontSize: 10,
-            color: 'var(--text-dim)',
-            lineHeight: 1.6
-          }}
-        >
+        <div ref={logRef} className="mono-block" style={{ marginTop: 10, maxHeight: 140, overflowY: 'auto' }}>
           {logLines.length === 0
-            ? <span>Waiting...</span>
-            : logLines.map((l, i) => <div key={i}>{l}</div>)
+            ? <span>Waiting for process output...</span>
+            : logLines.map((line, index) => <div key={index}>{line}</div>)
           }
         </div>
       </details>

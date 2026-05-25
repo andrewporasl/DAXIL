@@ -10,18 +10,29 @@ interface Props {
 
 export default function ResultPanel({ result, onOpenFolder, onReset }: Props) {
   return (
-    <div className="card" style={{ borderColor: 'var(--border)' }}>
-      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10, color: 'var(--success)' }}>
-        Export complete
+    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div>
+        <div className="section-title" style={{ marginBottom: 6 }}>Export Complete</div>
+        <div style={{ fontFamily: 'var(--serif)', fontSize: 28, lineHeight: 1.02, marginBottom: 4 }}>
+          Delivery ready
+        </div>
+        <div className="surface-note">
+          Final output saved locally and ready to open in Finder.
+        </div>
       </div>
-      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 3 }}>Output file</div>
-      <div style={{ fontSize: 12, wordBreak: 'break-all', color: 'var(--text-muted)', marginBottom: 10 }}>
-        {result.outputPath}
+
+      <div className="metric-card" style={{ padding: 12 }}>
+        <span className="metric-label">Final Size</span>
+        <span className="metric-value" style={{ fontSize: 22 }}>{formatBytes(result.outputSizeBytes)}</span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 14 }}>
-        <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>Final size</span>
-        <span style={{ fontWeight: 700, fontSize: 16 }}>{formatBytes(result.outputSizeBytes)}</span>
+
+      <div>
+        <div className="section-title" style={{ marginBottom: 6 }}>Output File</div>
+        <div className="mono-block" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+          {result.outputPath}
+        </div>
       </div>
+
       <div style={{ display: 'flex', gap: 8 }}>
         <button className="btn-primary" onClick={onOpenFolder} style={{ flex: 1 }}>
           Open folder

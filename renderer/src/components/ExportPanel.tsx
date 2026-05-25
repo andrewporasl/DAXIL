@@ -19,77 +19,69 @@ interface Props {
   disabled: boolean
 }
 
-type FormatOption = { label: string; sub: string; mode: ExportMode; mute: boolean }
-
-const FORMAT_OPTIONS: FormatOption[] = [
-  { label: 'MP4 Video', sub: 'H.264 with audio', mode: 'video', mute: false },
-  { label: 'MP4 No Audio', sub: 'Video only, no sound', mode: 'video', mute: true },
-  { label: 'MP3 Audio', sub: 'Audio track only', mode: 'audio', mute: false },
-  { label: 'GIF', sub: 'Animated image', mode: 'gif', mute: false }
+const FORMAT_OPTIONS: Array<{ label: string; sub: string; mode: ExportMode; mute: boolean }> = [
+  { label: 'MP4', sub: 'With audio', mode: 'video', mute: false },
+  { label: 'MP4 mute', sub: 'Silent video', mode: 'video', mute: true },
+  { label: 'MP3', sub: 'Audio only', mode: 'audio', mute: false },
+  { label: 'GIF', sub: 'Animated loop', mode: 'gif', mute: false }
 ]
 
 const MP3_BITRATES: Mp3Bitrate[] = [128, 192, 320]
 const GIF_SCALES: GifScale[] = [320, 480, 640]
 
 export default function ExportPanel({
-  mode, muteAudio, mp3Bitrate, gifScale, estimatedSizeBytes, outputDir,
-  onModeChange, onMuteAudioChange, onMp3BitrateChange, onGifScaleChange,
-  onOutputDirChange, onExport, exporting, disabled
+  mode,
+  muteAudio,
+  mp3Bitrate,
+  gifScale,
+  estimatedSizeBytes,
+  outputDir,
+  onModeChange,
+  onMuteAudioChange,
+  onMp3BitrateChange,
+  onGifScaleChange,
+  onOutputDirChange,
+  onExport,
+  exporting,
+  disabled
 }: Props) {
   const handlePickFolder = async () => {
     const dir = await window.electronAPI.openFolderDialog()
     if (dir) onOutputDirChange(dir)
   }
 
-  const isSelected = (opt: FormatOption) => opt.mode === mode && opt.mute === muteAudio
-
-  const handleFormat = (opt: FormatOption) => {
-    onModeChange(opt.mode)
-    onMuteAudioChange(opt.mute)
-  }
+  const isSelected = (option: { mode: ExportMode; mute: boolean }) =>
+    option.mode === mode && option.mute === muteAudio
 
   const exportLabel = mode === 'audio' ? 'Export MP3' : mode === 'gif' ? 'Export GIF' : 'Export MP4'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-      {/* Format */}
+    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div>
-        <div className="section-title">Format</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {FORMAT_OPTIONS.map((opt) => {
-            const sel = isSelected(opt)
+        <div className="section-title" style={{ marginBottom: 10 }}>Format</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+          {FORMAT_OPTIONS.map((option) => {
+            const selected = isSelected(option)
             return (
               <button
-                key={`${opt.mode}-${opt.mute}`}
-                onClick={() => handleFormat(opt)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '7px 10px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: sel ? 'var(--accent-dim)' : 'transparent',
-                  border: `1px solid ${sel ? 'var(--accent-border)' : 'transparent'}`,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.12s'
+                key={`${option.mode}-${option.mute}`}
+                className={`option-button ${selected ? 'selected' : ''}`}
+                onClick={() => {
+                  onModeChange(option.mode)
+                  onMuteAudioChange(option.mute)
                 }}
+                style={{ minHeight: 72 }}
               >
-                <div style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: '50%',
-                  border: `1.5px solid ${sel ? 'var(--accent)' : 'var(--text-dim)'}`,
-                  background: sel ? 'var(--accent)' : 'transparent',
-                  flexShrink: 0,
-                  transition: 'all 0.12s'
-                }} />
-                <div>
-                  <div style={{ fontSize: 12, color: sel ? 'var(--text)' : 'var(--text-muted)', fontWeight: sel ? 500 : 400 }}>
-                    {opt.label}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <div className="radio-dot" />
+                  <div>
+                    <div style={{ color: 'var(--text)', fontSize: 12, fontWeight: 700, marginBottom: 2 }}>
+                      {option.label}
+                    </div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                      {option.sub}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 1 }}>{opt.sub}</div>
                 </div>
               </button>
             )
@@ -97,97 +89,65 @@ export default function ExportPanel({
         </div>
       </div>
 
-      {/* MP3 quality */}
       {mode === 'audio' && (
         <div>
-          <div className="section-title">Quality</div>
-          <div style={{ display: 'flex', gap: 5 }}>
-            {MP3_BITRATES.map((br) => (
+          <div className="section-title" style={{ marginBottom: 8 }}>Audio Bitrate</div>
+          <div className="segmented-row">
+            {MP3_BITRATES.map((bitrate) => (
               <button
-                key={br}
-                onClick={() => onMp3BitrateChange(br)}
-                style={{
-                  flex: 1,
-                  padding: '5px 0',
-                  borderRadius: 'var(--radius-sm)',
-                  border: `1px solid ${mp3Bitrate === br ? 'var(--accent)' : 'var(--border)'}`,
-                  background: mp3Bitrate === br ? 'var(--accent-dim)' : 'transparent',
-                  color: mp3Bitrate === br ? 'var(--accent)' : 'var(--text-dim)',
-                  fontWeight: mp3Bitrate === br ? 600 : 400,
-                  fontSize: 11,
-                  cursor: 'pointer',
-                  transition: 'all 0.12s'
-                }}
+                key={bitrate}
+                className={`segment-pill ${mp3Bitrate === bitrate ? 'selected' : ''}`}
+                onClick={() => onMp3BitrateChange(bitrate)}
               >
-                {br}k
+                {bitrate}k
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* GIF scale */}
       {mode === 'gif' && (
         <div>
-          <div className="section-title">GIF Width</div>
-          <div style={{ display: 'flex', gap: 5 }}>
-            {GIF_SCALES.map((s) => (
+          <div className="section-title" style={{ marginBottom: 8 }}>GIF Width</div>
+          <div className="segmented-row">
+            {GIF_SCALES.map((scale) => (
               <button
-                key={s}
-                onClick={() => onGifScaleChange(s)}
-                style={{
-                  flex: 1,
-                  padding: '5px 0',
-                  borderRadius: 'var(--radius-sm)',
-                  border: `1px solid ${gifScale === s ? 'var(--accent)' : 'var(--border)'}`,
-                  background: gifScale === s ? 'var(--accent-dim)' : 'transparent',
-                  color: gifScale === s ? 'var(--accent)' : 'var(--text-dim)',
-                  fontWeight: gifScale === s ? 600 : 400,
-                  fontSize: 11,
-                  cursor: 'pointer',
-                  transition: 'all 0.12s'
-                }}
+                key={scale}
+                className={`segment-pill ${gifScale === scale ? 'selected' : ''}`}
+                onClick={() => onGifScaleChange(scale)}
               >
-                {s}px
+                {scale}px
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* Estimated size */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-        <span style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>
-          Est. size
-        </span>
-        <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em' }}>
-          {formatBytes(estimatedSizeBytes)}
-        </span>
+      <div className="metric-card" style={{ padding: 12 }}>
+        <span className="metric-label">Estimated Output</span>
+        <span className="metric-value" style={{ fontSize: 22 }}>{formatBytes(estimatedSizeBytes)}</span>
       </div>
 
-      {/* Output folder */}
       <div>
         <label>Output folder</label>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
           <input
             value={outputDir}
-            onChange={(e) => onOutputDirChange(e.target.value)}
+            onChange={(event) => onOutputDirChange(event.target.value)}
             placeholder="Choose a folder..."
             readOnly
-            style={{ flex: 1, fontSize: 11 }}
           />
-          <button className="btn-ghost" onClick={handlePickFolder} style={{ whiteSpace: 'nowrap', fontSize: 11 }}>
+          <button className="btn-ghost" onClick={handlePickFolder}>
             Browse
           </button>
         </div>
       </div>
 
-      {/* Export button */}
       <button
         className="btn-primary"
         onClick={onExport}
         disabled={disabled || exporting}
-        style={{ width: '100%', padding: '11px 0', fontSize: 13, letterSpacing: '0.01em' }}
+        style={{ width: '100%' }}
       >
         {exporting ? 'Exporting...' : exportLabel}
       </button>

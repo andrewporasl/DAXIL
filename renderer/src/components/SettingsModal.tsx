@@ -25,34 +25,49 @@ export default function SettingsModal({ onClose }: Props) {
 
   const handlePickFolder = async () => {
     const dir = await window.electronAPI.openFolderDialog()
-    if (dir) setSettings((s) => ({ ...s, defaultOutputDir: dir }))
+    if (dir) setSettings((state) => ({ ...state, defaultOutputDir: dir }))
   }
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 1000
-    }} onClick={onClose}>
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(8, 10, 16, 0.72)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+        zIndex: 1000
+      }}
+    >
       <div
         className="card"
-        style={{ width: 420, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+        style={{ width: 460, display: 'flex', flexDirection: 'column', gap: 16 }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>Settings</div>
-          <button onClick={onClose} style={{ color: 'var(--text-muted)', fontSize: 18, lineHeight: 1 }}>✕</button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start' }}>
+          <div>
+            <div className="section-title" style={{ marginBottom: 8 }}>Preferences</div>
+            <div style={{ fontFamily: 'var(--serif)', fontSize: 30, lineHeight: 1 }}>
+              Daxil settings
+            </div>
+          </div>
+          <button className="btn-ghost" onClick={onClose}>
+            Close
+          </button>
         </div>
 
         <div>
           <label>FFmpeg path</label>
           <input
             value={settings.ffmpegPath}
-            onChange={(e) => setSettings((s) => ({ ...s, ffmpegPath: e.target.value }))}
+            onChange={(event) => setSettings((state) => ({ ...state, ffmpegPath: event.target.value }))}
             placeholder="ffmpeg"
           />
-          <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>
-            Leave as "ffmpeg" if it's in your system PATH
+          <div className="surface-note" style={{ marginTop: 6 }}>
+            Leave this as "ffmpeg" when the binary is already available in your PATH.
           </div>
         </div>
 
@@ -60,7 +75,7 @@ export default function SettingsModal({ onClose }: Props) {
           <label>FFprobe path</label>
           <input
             value={settings.ffprobePath}
-            onChange={(e) => setSettings((s) => ({ ...s, ffprobePath: e.target.value }))}
+            onChange={(event) => setSettings((state) => ({ ...state, ffprobePath: event.target.value }))}
             placeholder="ffprobe"
           />
         </div>
@@ -70,18 +85,22 @@ export default function SettingsModal({ onClose }: Props) {
           <div style={{ display: 'flex', gap: 8 }}>
             <input
               value={settings.defaultOutputDir}
-              onChange={(e) => setSettings((s) => ({ ...s, defaultOutputDir: e.target.value }))}
+              onChange={(event) => setSettings((state) => ({ ...state, defaultOutputDir: event.target.value }))}
               placeholder="Videos folder"
               style={{ flex: 1 }}
             />
-            <button className="btn-ghost" onClick={handlePickFolder}>Browse</button>
+            <button className="btn-ghost" onClick={handlePickFolder}>
+              Browse
+            </button>
           </div>
         </div>
 
-        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <div className="panel-divider" />
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
           <button className="btn-primary" onClick={handleSave}>
-            {saved ? '✓ Saved!' : 'Save settings'}
+            {saved ? 'Saved' : 'Save settings'}
           </button>
         </div>
       </div>

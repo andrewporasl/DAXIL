@@ -16,7 +16,7 @@ function getMimeType(filePath: string): string {
 }
 
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'safe-file', privileges: { secure: true, standard: true, stream: true } }
+  { scheme: 'safe-file', privileges: { secure: true, standard: true, stream: true, supportFetchAPI: true } }
 ])
 
 function createWindow(): void {
@@ -48,8 +48,19 @@ function createWindow(): void {
 app.whenReady().then(() => {
   protocol.handle('safe-file', async (request) => {
     try {
-      const rawUrl = request.url.replace(/^safe-file:\/\/\//, '').split('?')[0]
-      const filePath = decodeURIComponent(rawUrl)
+      const parsed = new URL(request.url)
+      const requestedPath = parsed.searchParams.get('path')
+      let filePath = requestedPath
+        ? decodeURIComponent(requestedPath)
+        : decodeURIComponent(`${parsed.host}${parsed.pathname}`)
+
+      // Electron may reinterpret absolute POSIX paths as URL hosts for custom schemes.
+      if (!requestedPath && process.platform !== 'win32') filePath = `/${filePath.replace(/^\/+/, '')}`
+
+      // On Windows, URL pathname adds a leading / before drive letters (e.g. /C:/...).
+      if (process.platform === 'win32') filePath = filePath.replace(/^\/([A-Za-z]:)/, '$1')
+
+      filePath = path.normalize(filePath)
       const stat = fs.statSync(filePath)
       const total = stat.size
       const mimeType = getMimeType(filePath)

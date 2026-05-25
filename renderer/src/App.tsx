@@ -11,7 +11,14 @@ import ExportPanel from './components/ExportPanel'
 import ProgressPanel from './components/ProgressPanel'
 import ResultPanel from './components/ResultPanel'
 import SettingsModal from './components/SettingsModal'
-import { estimateCompressedSize, estimateTrimmedSize, estimateMp3Size, estimateGifSize } from './lib/sizeEstimator'
+import {
+  estimateCompressedSize,
+  estimateTrimmedSize,
+  estimateMp3Size,
+  estimateGifSize,
+  formatBytes,
+  formatDuration
+} from './lib/sizeEstimator'
 
 type ExportState = 'idle' | 'running' | 'done' | 'error'
 
@@ -45,8 +52,8 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
 
   useEffect(() => {
-    window.electronAPI.getSettings().then((s) => {
-      if (s.defaultOutputDir) setOutputDir(s.defaultOutputDir)
+    window.electronAPI.getSettings().then((settings) => {
+      if (settings.defaultOutputDir) setOutputDir(settings.defaultOutputDir)
     })
   }, [])
 
@@ -85,19 +92,18 @@ export default function App() {
       setMetadata(meta)
       setTrim({ enabled: false, startSeconds: 0, endSeconds: meta.durationSeconds })
 
-      // Generate thumbnails in background — don't block UI
       window.electronAPI.getThumbnails(fp, meta.durationSeconds, 16)
         .then(setThumbnails)
         .catch(() => setThumbnails([]))
-    } catch (e: unknown) {
-      setMetaError(e instanceof Error ? e.message : 'Failed to read file metadata')
+    } catch (error: unknown) {
+      setMetaError(error instanceof Error ? error.message : 'Failed to read file metadata')
     } finally {
       setLoadingMeta(false)
     }
   }, [])
 
   const handleTrimChange = useCallback((start: number, end: number) => {
-    setTrim((prev) => {
+    setTrim(() => {
       const fullEnd = metadata?.durationSeconds ?? 0
       const atFullRange = start <= 0.05 && end >= fullEnd - 0.05
       return {
@@ -112,10 +118,10 @@ export default function App() {
     ? exportMode === 'audio'
       ? estimateMp3Size(metadata, mp3Bitrate, trim)
       : exportMode === 'gif'
-      ? estimateGifSize(metadata, gifScale, trim)
-      : REDUCTION_MAP[compressionLevel] > 0
-      ? estimateCompressedSize(metadata, REDUCTION_MAP[compressionLevel], trim)
-      : estimateTrimmedSize(metadata, trim)
+        ? estimateGifSize(metadata, gifScale, trim)
+        : REDUCTION_MAP[compressionLevel] > 0
+          ? estimateCompressedSize(metadata, REDUCTION_MAP[compressionLevel], trim)
+          : estimateTrimmedSize(metadata, trim)
     : 0
 
   const handleExport = useCallback(async () => {
@@ -134,10 +140,10 @@ export default function App() {
     const baseName = metadata.fileName.replace(/\.[^.]+$/, '')
     const suffix =
       exportMode === 'audio' ? '_audio' :
-      exportMode === 'gif' ? '_animated' :
-      muteAudio ? '_muted' :
-      compressionLevel !== 'none' ? `_${compressionLevel}pct` :
-      trim.enabled ? '_trimmed' : '_export'
+        exportMode === 'gif' ? '_animated' :
+          muteAudio ? '_muted' :
+            compressionLevel !== 'none' ? `_${compressionLevel}pct` :
+              trim.enabled ? '_trimmed' : '_export'
 
     const outputFileName = `${baseName}${suffix}`
 
@@ -171,149 +177,99 @@ export default function App() {
     setExportError(null)
   }, [])
 
-  const showProgress = exportState === 'running' || exportState === 'done' || exportState === 'error'
+  const timelineEnd = metadata ? (trim.enabled ? trim.endSeconds : metadata.durationSeconds) : 0
+  const selectionDuration = metadata ? Math.max(timelineEnd - trim.startSeconds, 0) : 0
+  const modeLabel = exportMode === 'audio'
+    ? `MP3 ${mp3Bitrate}k`
+    : exportMode === 'gif'
+      ? `GIF ${gifScale}px`
+      : muteAudio
+        ? 'MP4 mute'
+        : compressionLevel === 'none'
+          ? 'MP4 original'
+          : `MP4 ${compressionLevel}%`
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: 'var(--bg)' }}>
-      {/* Header */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 20px',
-        height: 44,
-        borderBottom: '1px solid var(--border)',
-        flexShrink: 0,
-        background: 'var(--surface)'
-      }}>
-        <div style={{
-          fontWeight: 800,
-          fontSize: 14,
-          letterSpacing: '0.12em',
-          color: 'var(--text)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8
-        }}>
-          DAXIL
-          <div style={{
-            width: 6,
-            height: 6,
-            borderRadius: '50%',
-            background: 'var(--accent)'
-          }} />
+    <div style={{ height: '100vh', overflow: 'hidden', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <header className="card-soft" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 60 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>Daxil</div>
+          <div className="surface-note" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {metadata ? metadata.fileName : 'Local video trimmer and exporter'}
+          </div>
         </div>
-        <button className="btn-ghost" onClick={() => setShowSettings(true)} style={{ fontSize: 11 }}>
-          Settings
-        </button>
-      </div>
 
-      {/* Body */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {metadata && <div className="badge badge-accent">{formatDuration(selectionDuration)}</div>}
+          {metadata && <div className="badge">{formatBytes(estimatedSize)}</div>}
+          <button className="btn-ghost" onClick={() => setShowSettings(true)}>
+            Settings
+          </button>
+        </div>
+      </header>
 
-        {/* Left panel */}
-        <div style={{
-          width: 240,
-          flexShrink: 0,
-          borderRight: '1px solid var(--border)',
-          padding: 14,
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 12
-        }}>
+      <main style={{ display: 'grid', gridTemplateColumns: '236px minmax(0, 1fr) 316px', gap: 12, flex: 1, minHeight: 0 }}>
+        <aside className="card-soft" style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}>
           <FileDropZone onFilePicked={handleFilePicked} disabled={exportState === 'running'} />
 
           {loadingMeta && (
-            <div style={{ color: 'var(--text-dim)', fontSize: 11, textAlign: 'center', padding: 10 }}>
-              Reading metadata...
+            <div className="card">
+              <div className="section-title" style={{ marginBottom: 6 }}>Loading</div>
+              <div className="surface-note">Reading file metadata and building thumbnails.</div>
             </div>
           )}
 
           {metaError && (
             <div className="card" style={{ borderColor: 'var(--danger)' }}>
-              <div style={{ color: 'var(--danger)', fontSize: 12 }}>{metaError}</div>
+              <div className="section-title" style={{ marginBottom: 6, color: 'var(--danger)' }}>Error</div>
+              <div className="surface-note" style={{ color: 'var(--danger)' }}>{metaError}</div>
             </div>
           )}
 
           {metadata && <MetadataCard metadata={metadata} />}
-        </div>
+        </aside>
 
-        {/* Center panel */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: 16,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 12
-          }}>
+        <section className="card-soft" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div className="section-title" style={{ marginBottom: 6 }}>Preview</div>
+              <div className="surface-note">Range {formatDuration(trim.startSeconds)} to {formatDuration(timelineEnd)}</div>
+            </div>
+
+            {metadata && (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div className="badge">{modeLabel}</div>
+                <div className="badge">{formatDuration(selectionDuration)}</div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ flex: 1, minHeight: 0 }}>
             <VideoTimeline
               filePath={filePath}
               duration={metadata?.durationSeconds ?? 0}
               thumbnails={thumbnails}
               start={trim.startSeconds}
-              end={trim.enabled ? trim.endSeconds : (metadata?.durationSeconds ?? 0)}
+              end={timelineEnd}
               currentTime={videoCurrentTime}
               onTimeUpdate={setVideoCurrentTime}
               onTrimChange={handleTrimChange}
             />
-
-            {exportState === 'error' && exportError && (
-              <div className="card" style={{ borderColor: 'var(--danger)' }}>
-                <div style={{ fontWeight: 600, color: 'var(--danger)', marginBottom: 6, fontSize: 12 }}>Export failed</div>
-                <pre style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 120, overflowY: 'auto' }}>
-                  {exportError}
-                </pre>
-                <button className="btn-ghost" onClick={handleReset} style={{ marginTop: 8, fontSize: 11 }}>Dismiss</button>
-              </div>
-            )}
-
-            {exportState === 'done' && result && (
-              <ResultPanel
-                result={result}
-                onOpenFolder={() => window.electronAPI.openFolder(result.outputPath)}
-                onReset={handleReset}
-              />
-            )}
-
-            {showProgress && exportState !== 'done' && exportState !== 'error' && (
-              <ProgressPanel
-                progress={progress}
-                logLines={ffmpegLog}
-                onCancel={handleCancel}
-                exporting={exportState === 'running'}
-              />
-            )}
           </div>
-        </div>
+        </section>
 
-        {/* Right panel */}
-        <div style={{
-          width: 280,
-          flexShrink: 0,
-          borderLeft: '1px solid var(--border)',
-          overflowY: 'auto',
-          padding: 16,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 0
-        }}>
-          {!metadata ? (
-            <div style={{ color: 'var(--text-dim)', fontSize: 12, textAlign: 'center', marginTop: 60 }}>
-              Select a video to get started
-            </div>
-          ) : (
+        <aside className="card-soft" style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}>
+          {metadata ? (
             <>
-              <CompressionPresets
-                metadata={metadata}
-                trim={trim}
-                selected={compressionLevel}
-                onChange={setCompressionLevel}
-              />
-
-              <div style={{ height: 1, background: 'var(--border)', margin: '14px 0' }} />
+              <div className="card" style={{ padding: 12 }}>
+                <div className="section-title" style={{ marginBottom: 8 }}>Compression</div>
+                <CompressionPresets
+                  metadata={metadata}
+                  trim={trim}
+                  selected={compressionLevel}
+                  onChange={setCompressionLevel}
+                />
+              </div>
 
               <ExportPanel
                 mode={exportMode}
@@ -331,10 +287,47 @@ export default function App() {
                 exporting={exportState === 'running'}
                 disabled={!metadata}
               />
+
+              {exportState === 'running' && (
+                <ProgressPanel
+                  progress={progress}
+                  logLines={ffmpegLog}
+                  onCancel={handleCancel}
+                  exporting={true}
+                />
+              )}
+
+              {exportState === 'done' && result && (
+                <ResultPanel
+                  result={result}
+                  onOpenFolder={() => window.electronAPI.openFolder(result.outputPath)}
+                  onReset={handleReset}
+                />
+              )}
+
+              {exportState === 'error' && exportError && (
+                <div className="card" style={{ borderColor: 'var(--danger)' }}>
+                  <div className="section-title" style={{ marginBottom: 6, color: 'var(--danger)' }}>Export error</div>
+                  <pre className="mono-block" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                    {exportError}
+                  </pre>
+                  <button className="btn-ghost" onClick={handleReset} style={{ marginTop: 10 }}>
+                    Dismiss
+                  </button>
+                </div>
+              )}
             </>
+          ) : (
+            <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div className="section-title" style={{ marginBottom: 8 }}>Export</div>
+              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Load a video to start.</div>
+              <div className="surface-note">
+                Compression, format, and export controls show up here once a source is selected.
+              </div>
+            </div>
           )}
-        </div>
-      </div>
+        </aside>
+      </main>
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </div>
