@@ -111,14 +111,12 @@ label {
   min-width: 0;
 }
 
-.brand-mark {
-  width: 14px;
-  height: 14px;
-  border: 1px solid var(--accent-border);
-  border-radius: 4px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+.brand-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
   flex-shrink: 0;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.22));
 }
 
 .brand-copy {
@@ -311,6 +309,72 @@ label {
   font-size: 11px;
 }
 
+.side-rail {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.side-rail-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.side-rail-stack::-webkit-scrollbar {
+  width: 8px;
+}
+
+.side-rail-stack::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+
+.export-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.export-panel-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.export-format-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.export-option {
+  min-height: 64px;
+}
+
+.export-metric-card {
+  padding: 12px;
+}
+
+.export-output-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.export-panel-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: 12px;
+  padding-top: 12px;
+  background: linear-gradient(180deg, rgba(23, 27, 36, 0) 0%, var(--panel) 28%);
+}
+
 .option-button {
   display: flex;
   width: 100%;
@@ -441,6 +505,29 @@ label {
   font-family: "SFMono-Regular", "JetBrains Mono", "IBM Plex Mono", monospace;
   font-size: 10px;
   line-height: 1.55;
+}
+
+@media (max-height: 900px) {
+  .side-rail-stack {
+    gap: 10px;
+  }
+
+  .side-rail .card,
+  .side-rail.card-soft {
+    padding: 12px;
+  }
+
+  .side-rail .option-button {
+    padding: 9px 10px;
+  }
+
+  .export-option {
+    min-height: 60px;
+  }
+
+  .export-metric-card .metric-value {
+    font-size: 20px !important;
+  }
 }
 
 ::-webkit-scrollbar {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import brandIcon from '../../resources/icon.png'
 import type {
   VideoMetadata, TrimRange, ExportMode, Mp3Bitrate, GifScale,
   CompressionLevel, ProgressEvent, CompletionEvent, FFmpegEvent
@@ -204,7 +205,7 @@ export default function App() {
     <div style={{ height: '100vh', overflow: 'hidden', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <header className="card-soft" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 60 }}>
         <div className="brand-lockup">
-          <div className="brand-mark" aria-hidden="true" />
+          <img src={brandIcon} alt="" className="brand-icon" />
           <div className="brand-copy">
             <div className="brand-wordmark">DAXIL</div>
             <div className="brand-subtitle">
@@ -229,28 +230,30 @@ export default function App() {
       </header>
 
       <main style={{ display: 'grid', gridTemplateColumns: '236px minmax(0, 1fr) 316px', gap: 12, flex: 1, minHeight: 0 }}>
-        <aside className="card-soft" style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}>
-          <FileDropZone
-            onFilePicked={handleFilePicked}
-            disabled={isBusy}
-            hasVideo={Boolean(filePath)}
-          />
+        <aside className="card-soft side-rail">
+          <div className="side-rail-stack">
+            <FileDropZone
+              onFilePicked={handleFilePicked}
+              disabled={isBusy}
+              hasVideo={Boolean(filePath)}
+            />
 
-          {loadingMeta && (
-            <div className="card">
-              <div className="section-title" style={{ marginBottom: 6 }}>Loading</div>
-              <div className="surface-note">Reading file metadata and building thumbnails.</div>
-            </div>
-          )}
+            {loadingMeta && (
+              <div className="card">
+                <div className="section-title" style={{ marginBottom: 6 }}>Loading</div>
+                <div className="surface-note">Reading file metadata and building thumbnails.</div>
+              </div>
+            )}
 
-          {metaError && (
-            <div className="card" style={{ borderColor: 'var(--danger)' }}>
-              <div className="section-title" style={{ marginBottom: 6, color: 'var(--danger)' }}>Error</div>
-              <div className="surface-note" style={{ color: 'var(--danger)' }}>{metaError}</div>
-            </div>
-          )}
+            {metaError && (
+              <div className="card" style={{ borderColor: 'var(--danger)' }}>
+                <div className="section-title" style={{ marginBottom: 6, color: 'var(--danger)' }}>Error</div>
+                <div className="surface-note" style={{ color: 'var(--danger)' }}>{metaError}</div>
+              </div>
+            )}
 
-          {metadata && <MetadataCard metadata={metadata} />}
+            {metadata && <MetadataCard metadata={metadata} />}
+          </div>
         </aside>
 
         <section className="card-soft" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 }}>
@@ -282,9 +285,9 @@ export default function App() {
           </div>
         </section>
 
-        <aside className="card-soft" style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}>
+        <aside className="card-soft side-rail">
           {metadata ? (
-            <>
+            <div className="side-rail-stack">
               <div className="card" style={{ padding: 12 }}>
                 <div className="section-title" style={{ marginBottom: 8 }}>Compression</div>
                 <CompressionPresets
@@ -340,7 +343,7 @@ export default function App() {
                   </button>
                 </div>
               )}
-            </>
+            </div>
           ) : (
             <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <div className="section-title" style={{ marginBottom: 8 }}>Export</div>
