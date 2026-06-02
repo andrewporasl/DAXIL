@@ -202,8 +202,8 @@ export default function App() {
           : `MP4 ${compressionLevel}%`
 
   return (
-    <div style={{ height: '100vh', overflow: 'hidden', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <header className="card-soft" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 60 }}>
+    <div className="app-shell">
+      <header className="card-soft app-header">
         <div className="brand-lockup">
           <img src={brandIcon} alt="" className="brand-icon" />
           <div className="brand-copy">
@@ -229,7 +229,7 @@ export default function App() {
         </div>
       </header>
 
-      <main style={{ display: 'grid', gridTemplateColumns: '236px minmax(0, 1fr) 316px', gap: 12, flex: 1, minHeight: 0 }}>
+      <main className="app-layout">
         <aside className="card-soft side-rail">
           <div className="side-rail-stack">
             <FileDropZone
@@ -256,7 +256,7 @@ export default function App() {
           </div>
         </aside>
 
-        <section className="card-soft" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 }}>
+        <section className="card-soft preview-panel">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             <div>
               <div className="section-title" style={{ marginBottom: 6 }}>Preview</div>
