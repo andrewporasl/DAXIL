@@ -8,12 +8,11 @@ The GitHub Actions release workflow publishes these assets for each tagged versi
 
 - Windows x64 NSIS installer.
 - Windows x64 ZIP archive.
-- macOS x64 DMG.
-- macOS x64 ZIP archive.
-- macOS arm64 DMG.
-- macOS arm64 ZIP archive.
+- macOS arm64 (Apple Silicon) DMG.
+- macOS arm64 (Apple Silicon) ZIP archive.
 - Linux x64 AppImage.
 - Linux x64 tarball.
+- SHA-256 checksums file covering all assets.
 
 ## Versioning
 

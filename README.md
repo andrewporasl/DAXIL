@@ -28,7 +28,6 @@ https://github.com/andrewporasl/DAXIL/releases
 Use the asset that matches the target platform:
 
 - macOS Apple Silicon: `DAXIL-<version>-mac-arm64.dmg`
-- macOS Intel: `DAXIL-<version>-mac-x64.dmg`
 - Windows: `DAXIL-<version>-win-x64.exe`
 - Linux: `DAXIL-<version>-linux-x86_64.AppImage`
 
@@ -98,7 +97,6 @@ Package specific targets:
 
 ```bash
 npm run package:mac
-npm run package:mac:x64
 npm run package:mac:arm64
 npm run package:win
 npm run package:linux
@@ -111,8 +109,7 @@ Packaged artifacts are written to `dist/`.
 Tagged releases are built by GitHub Actions. The release workflow builds and publishes:
 
 - Windows x64 installer and ZIP archive.
-- macOS x64 DMG and ZIP archive.
-- macOS arm64 DMG and ZIP archive.
+- macOS arm64 (Apple Silicon) DMG and ZIP archive.
 - Linux x64 AppImage and tarball.
 
 Release process details are documented in [Release Process](docs/RELEASE_PROCESS.md).

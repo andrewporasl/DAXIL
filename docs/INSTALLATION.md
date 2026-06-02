@@ -12,10 +12,9 @@ Download an application artifact from the release assets section. Do not use the
 
 ## macOS
 
-Use the DMG that matches the Mac architecture:
+DAXIL ships a native Apple Silicon build:
 
 - Apple Silicon: `DAXIL-<version>-mac-arm64.dmg`
-- Intel: `DAXIL-<version>-mac-x64.dmg`
 
 Installation:
 
