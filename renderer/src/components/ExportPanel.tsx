@@ -1,6 +1,7 @@
 import React from 'react'
-import type { ExportMode, Mp3Bitrate, GifScale } from '../../../../shared/types'
+import type { ExportMode, Mp3Bitrate, GifScale } from '@shared/types'
 import { formatBytes } from '../lib/sizeEstimator'
+import Icon from './Icon'
 
 interface Props {
   mode: ExportMode
@@ -19,11 +20,11 @@ interface Props {
   disabled: boolean
 }
 
-const FORMAT_OPTIONS: Array<{ label: string; sub: string; mode: ExportMode; mute: boolean }> = [
-  { label: 'MP4', sub: 'With audio', mode: 'video', mute: false },
-  { label: 'MP4 mute', sub: 'Silent video', mode: 'video', mute: true },
-  { label: 'MP3', sub: 'Audio only', mode: 'audio', mute: false },
-  { label: 'GIF', sub: 'Animated loop', mode: 'gif', mute: false }
+const FORMAT_OPTIONS: Array<{ label: string; sub: string; mode: ExportMode; mute: boolean; icon: 'video' | 'volume-off' | 'music' | 'image' }> = [
+  { label: 'MP4', sub: 'With audio', mode: 'video', mute: false, icon: 'video' },
+  { label: 'MP4 mute', sub: 'Silent video', mode: 'video', mute: true, icon: 'volume-off' },
+  { label: 'MP3', sub: 'Audio only', mode: 'audio', mute: false, icon: 'music' },
+  { label: 'GIF', sub: 'Animated loop', mode: 'gif', mute: false, icon: 'image' }
 ]
 
 const MP3_BITRATES: Mp3Bitrate[] = [128, 192, 320]
@@ -73,7 +74,7 @@ export default function ExportPanel({
                   }}
                 >
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <div className="radio-dot" />
+                    <div className="format-icon"><Icon name={option.icon} size={16} /></div>
                     <div>
                       <div style={{ color: 'var(--text)', fontSize: 12, fontWeight: 700, marginBottom: 2 }}>
                         {option.label}
@@ -137,8 +138,8 @@ export default function ExportPanel({
               placeholder="Choose a folder..."
               readOnly
             />
-            <button className="btn-ghost" onClick={handlePickFolder}>
-              Browse
+            <button className="icon-button" onClick={handlePickFolder} aria-label="Browse output folder" title="Browse output folder">
+              <Icon name="folder" />
             </button>
           </div>
         </div>
@@ -151,7 +152,8 @@ export default function ExportPanel({
           disabled={disabled || exporting}
           style={{ width: '100%' }}
         >
-          {exporting ? 'Exporting...' : exportLabel}
+          <Icon name="export" size={16} />
+          <span>{exporting ? 'Exporting...' : exportLabel}</span>
         </button>
       </div>
     </div>

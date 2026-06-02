@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react'
 import { formatDuration } from '../lib/sizeEstimator'
+import Icon from './Icon'
 
 interface Props {
   filePath: string | null
@@ -141,9 +142,15 @@ export default function VideoTimeline({
         </div>
 
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn-ghost" onClick={() => onTrimChange(currentTime, end)}>Set In</button>
-          <button className="btn-ghost" onClick={() => onTrimChange(start, currentTime)}>Set Out</button>
-          <button className="btn-ghost" onClick={() => onTrimChange(0, duration)}>Reset</button>
+          <button className="icon-button" onClick={() => onTrimChange(currentTime, end)} aria-label="Set in point" title="Set in point">
+            <Icon name="mark-in" />
+          </button>
+          <button className="icon-button" onClick={() => onTrimChange(start, currentTime)} aria-label="Set out point" title="Set out point">
+            <Icon name="mark-out" />
+          </button>
+          <button className="icon-button" onClick={() => onTrimChange(0, duration)} aria-label="Reset trim" title="Reset trim">
+            <Icon name="reset" />
+          </button>
         </div>
       </div>
 
@@ -190,18 +197,23 @@ export default function VideoTimeline({
               background: 'rgba(23, 27, 36, 0.9)'
             }}
           >
-            {currentTime > 0 ? 'Resume' : 'Play'}
+            <Icon name="play" />
+            <span>{currentTime > 0 ? 'Resume' : 'Play'}</span>
           </button>
         )}
       </div>
 
       <div className="transport-row">
         <div className="transport-group">
-          <button className="transport-button primary" onClick={togglePlayback}>
-            {isPlaying ? 'Pause' : 'Play'}
+          <button className="transport-button primary" onClick={togglePlayback} aria-label={isPlaying ? 'Pause' : 'Play'} title={isPlaying ? 'Pause' : 'Play'}>
+            <Icon name={isPlaying ? 'pause' : 'play'} size={16} />
           </button>
-          <button className="transport-button" onClick={() => seekBy(-5)}>-5s</button>
-          <button className="transport-button" onClick={() => seekBy(5)}>+5s</button>
+          <button className="transport-button" onClick={() => seekBy(-5)} aria-label="Back five seconds" title="Back five seconds">
+            <Icon name="skip-back" size={16} />
+          </button>
+          <button className="transport-button" onClick={() => seekBy(5)} aria-label="Forward five seconds" title="Forward five seconds">
+            <Icon name="skip-forward" size={16} />
+          </button>
         </div>
 
         <div

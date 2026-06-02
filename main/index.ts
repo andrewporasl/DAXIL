@@ -15,6 +15,10 @@ function getMimeType(filePath: string): string {
   return map[ext] ?? 'application/octet-stream'
 }
 
+function enqueueStreamChunk(controller: ReadableStreamDefaultController<Uint8Array>, chunk: string | Buffer): void {
+  controller.enqueue(new Uint8Array(Buffer.from(chunk)))
+}
+
 protocol.registerSchemesAsPrivileged([
   { scheme: 'safe-file', privileges: { secure: true, standard: true, stream: true, supportFetchAPI: true } }
 ])
@@ -75,7 +79,7 @@ app.whenReady().then(() => {
           const nodeStream = fs.createReadStream(filePath, { start, end })
           const webStream = new ReadableStream({
             start(controller) {
-              nodeStream.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)))
+              nodeStream.on('data', (chunk) => enqueueStreamChunk(controller, chunk))
               nodeStream.on('end', () => controller.close())
               nodeStream.on('error', (err) => controller.error(err))
             },
@@ -96,7 +100,7 @@ app.whenReady().then(() => {
       const nodeStream = fs.createReadStream(filePath)
       const webStream = new ReadableStream({
         start(controller) {
-          nodeStream.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)))
+          nodeStream.on('data', (chunk) => enqueueStreamChunk(controller, chunk))
           nodeStream.on('end', () => controller.close())
           nodeStream.on('error', (err) => controller.error(err))
         },

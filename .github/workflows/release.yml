@@ -22,6 +22,7 @@ jobs:
             artifact: DAXIL-windows-x64
             files: |
               dist/*.exe
+              dist/*.zip
           - name: macOS x64
             os: macos-13
             command: npm run package:mac:x64
@@ -38,14 +39,18 @@ jobs:
               dist/*.dmg
               dist/*.zip
               dist/*.blockmap
+          - name: Linux x64
+            os: ubuntu-latest
+            command: npm run package:linux
+            artifact: DAXIL-linux-x64
+            files: |
+              dist/*.AppImage
+              dist/*.tar.gz
+              dist/*.yml
 
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      CSC_LINK: ${{ secrets.CSC_LINK }}
-      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      CSC_IDENTITY_AUTO_DISCOVERY: false
 
     steps:
       - name: Check out repository
@@ -56,6 +61,17 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      - name: Validate release version
+        shell: bash
+        run: |
+          package_version="$(node -p "require('./package.json').version")"
+          tag_version="${GITHUB_REF_NAME#v}"
+
+          if [ "$package_version" != "$tag_version" ]; then
+            echo "::error::Release tag ${GITHUB_REF_NAME} does not match package.json version ${package_version}. Commit the version bump, then tag that commit."
+            exit 1
+          fi
 
       - name: Install dependencies
         run: npm ci
@@ -85,5 +101,6 @@ jobs:
       - name: Attach assets to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          name: DAXIL ${{ github.ref_name }}
           files: release-assets/**/*
           fail_on_unmatched_files: true

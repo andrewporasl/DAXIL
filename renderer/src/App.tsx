@@ -12,6 +12,7 @@ import ExportPanel from './components/ExportPanel'
 import ProgressPanel from './components/ProgressPanel'
 import ResultPanel from './components/ResultPanel'
 import SettingsModal from './components/SettingsModal'
+import Icon from './components/Icon'
 import {
   estimateCompressedSize,
   estimateTrimmedSize,
@@ -22,6 +23,30 @@ import {
 } from './lib/sizeEstimator'
 
 type ExportState = 'idle' | 'running' | 'done' | 'error'
+type ThemeName = 'cloud' | 'mint' | 'rose' | 'amber' | 'mist' | 'sage' | 'blush' | 'linen'
+
+const THEME_GROUPS: Array<{ label: string; themes: Array<{ id: ThemeName; label: string }> }> = [
+  {
+    label: 'Dark',
+    themes: [
+      { id: 'cloud', label: 'Cloud' },
+      { id: 'mint', label: 'Mint' },
+      { id: 'rose', label: 'Rose' },
+      { id: 'amber', label: 'Amber' }
+    ]
+  },
+  {
+    label: 'Light',
+    themes: [
+      { id: 'mist', label: 'Mist' },
+      { id: 'sage', label: 'Sage' },
+      { id: 'blush', label: 'Blush' },
+      { id: 'linen', label: 'Linen' }
+    ]
+  }
+]
+
+const THEMES = THEME_GROUPS.flatMap((group) => group.themes)
 
 const REDUCTION_MAP: Record<CompressionLevel, number> = {
   none: 0, '25': 0.25, '50': 0.50, '75': 0.75, '90': 0.90
@@ -51,7 +76,15 @@ export default function App() {
   const [exportError, setExportError] = useState<string | null>(null)
 
   const [showSettings, setShowSettings] = useState(false)
+  const [theme, setTheme] = useState<ThemeName>(() => {
+    const savedTheme = window.localStorage.getItem('daxil-theme')
+    return THEMES.some((item) => item.id === savedTheme) ? savedTheme as ThemeName : 'cloud'
+  })
   const isBusy = exportState === 'running' || loadingMeta
+
+  useEffect(() => {
+    window.localStorage.setItem('daxil-theme', theme)
+  }, [theme])
 
   useEffect(() => {
     window.electronAPI.getSettings().then((settings) => {
@@ -202,7 +235,7 @@ export default function App() {
           : `MP4 ${compressionLevel}%`
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-theme={theme}>
       <header className="card-soft app-header">
         <div className="brand-lockup">
           <img src={brandIcon} alt="" className="brand-icon" />
@@ -214,17 +247,53 @@ export default function App() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <div className="app-actions">
           {metadata && <div className="badge badge-accent">{formatDuration(selectionDuration)}</div>}
           {metadata && <div className="badge">{formatBytes(estimatedSize)}</div>}
-          <button className="btn-primary" onClick={handleOpenVideo} disabled={isBusy}>
-            {metadata ? 'Open Another' : 'Open Video'}
+
+          <label className="theme-picker" aria-label="Theme">
+            <span>Theme</span>
+            <select
+              className="theme-select"
+              value={theme}
+              onChange={(event) => setTheme(event.target.value as ThemeName)}
+            >
+              {THEME_GROUPS.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.themes.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+
+          <button
+            className="icon-button icon-button-accent"
+            onClick={handleOpenVideo}
+            disabled={isBusy}
+            aria-label={metadata ? 'Open another video' : 'Open video'}
+            title={metadata ? 'Open another video' : 'Open video'}
+          >
+            <Icon name="folder-plus" />
           </button>
-          <button className="btn-ghost" onClick={handleOpenNewWindow}>
-            New Window
+          <button
+            className="icon-button"
+            onClick={handleOpenNewWindow}
+            aria-label="New window"
+            title="New window"
+          >
+            <Icon name="window" />
           </button>
-          <button className="btn-ghost" onClick={() => setShowSettings(true)}>
-            Settings
+          <button
+            className="icon-button"
+            onClick={() => setShowSettings(true)}
+            aria-label="Settings"
+            title="Settings"
+          >
+            <Icon name="settings" />
           </button>
         </div>
       </header>

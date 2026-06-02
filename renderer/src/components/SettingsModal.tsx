@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import type { AppSettings } from '../../../../shared/types'
+import type { AppSettings } from '@shared/types'
+import Icon from './Icon'
 
 interface Props {
   onClose: () => void
@@ -49,7 +50,9 @@ export default function SettingsModal({ onClose }: Props) {
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start' }}>
           <div className="brand-lockup">
-            <div className="brand-mark" aria-hidden="true" />
+            <div className="settings-mark" aria-hidden="true">
+              <Icon name="settings" size={18} />
+            </div>
             <div className="brand-copy">
               <div className="section-title" style={{ marginBottom: 8 }}>Preferences</div>
               <div className="brand-modal-title">
@@ -57,8 +60,8 @@ export default function SettingsModal({ onClose }: Props) {
               </div>
             </div>
           </div>
-          <button className="btn-ghost" onClick={onClose}>
-            Close
+          <button className="icon-button" onClick={onClose} aria-label="Close settings" title="Close settings">
+            <Icon name="x" />
           </button>
         </div>
 
@@ -95,8 +98,8 @@ export default function SettingsModal({ onClose }: Props) {
               placeholder="Videos folder"
               style={{ flex: 1 }}
             />
-            <button className="btn-ghost" onClick={handlePickFolder}>
-              Browse
+            <button className="icon-button" onClick={handlePickFolder} aria-label="Browse default output folder" title="Browse default output folder">
+              <Icon name="folder" />
             </button>
           </div>
         </div>

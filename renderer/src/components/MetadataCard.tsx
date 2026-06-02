@@ -1,5 +1,5 @@
 import React from 'react'
-import type { VideoMetadata } from '../../../../shared/types'
+import type { VideoMetadata } from '@shared/types'
 import { formatBytes, formatDuration } from '../lib/sizeEstimator'
 
 interface Props {
