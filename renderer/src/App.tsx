@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import brandIcon from '../../resources/icon.png'
 import type {
-  VideoMetadata, TrimRange, ExportMode, Mp3Bitrate, GifScale,
+  VideoMetadata, TrimRange, ExportMode, Mp3Bitrate, GifScale, GifFps,
   CompressionLevel, ProgressEvent, CompletionEvent, FFmpegEvent, CropSelection
 } from '../../shared/types'
 import FileDropZone from './components/FileDropZone'
@@ -96,8 +96,12 @@ export default function App() {
   const [compressionLevel, setCompressionLevel] = useState<CompressionLevel>('none')
   const [exportMode, setExportMode] = useState<ExportMode>('video')
   const [muteAudio, setMuteAudio] = useState(false)
+  const [playbackRate, setPlaybackRate] = useState(1)
   const [mp3Bitrate, setMp3Bitrate] = useState<Mp3Bitrate>(192)
   const [gifScale, setGifScale] = useState<GifScale>(480)
+  const [gifFps, setGifFps] = useState<GifFps>(12)
+  const [gifPreviewUrl, setGifPreviewUrl] = useState<string | null>(null)
+  const [isGeneratingGifPreview, setIsGeneratingGifPreview] = useState(false)
   const [outputDir, setOutputDir] = useState('')
 
   const [exportState, setExportState] = useState<ExportState>('idle')
@@ -107,6 +111,7 @@ export default function App() {
   const [exportError, setExportError] = useState<string | null>(null)
 
   const [showSettings, setShowSettings] = useState(false)
+  const [compressionExpanded, setCompressionExpanded] = useState(false)
   const [theme, setTheme] = useState<ThemeName>(() => {
     const savedTheme = window.localStorage.getItem('daxil-theme')
     return THEMES.some((item) => item.id === savedTheme) ? savedTheme as ThemeName : 'cloud'
@@ -152,6 +157,8 @@ export default function App() {
     setExportError(null)
     setVideoCurrentTime(0)
     setCompressionLevel('none')
+    setPlaybackRate(1)
+    setGifFps(12)
 
     try {
       const meta = await window.electronAPI.getMetadata(fp)
@@ -219,6 +226,7 @@ export default function App() {
     setExportError(null)
 
     const baseName = metadata.fileName.replace(/\.[^.]+$/, '')
+    const speedSuffix = playbackRate !== 1 ? `_${playbackRate}x` : ''
     const videoModifiers = [
       muteAudio ? 'muted' : null,
       compressionLevel !== 'none' ? `${compressionLevel}pct` : null,
@@ -227,9 +235,9 @@ export default function App() {
     ].filter(Boolean)
 
     const suffix =
-      exportMode === 'audio' ? '_audio' :
-        exportMode === 'gif' ? `_animated${crop.enabled ? '_cropped' : ''}` :
-          videoModifiers.length > 0 ? `_${videoModifiers.join('_')}` : '_export'
+      exportMode === 'audio' ? `_audio${speedSuffix}` :
+        exportMode === 'gif' ? `_animated${crop.enabled ? '_cropped' : ''}${speedSuffix}` :
+          videoModifiers.length > 0 ? `_${videoModifiers.join('_')}${speedSuffix}` : `_export${speedSuffix}`
 
     const outputFileName = `${baseName}${suffix}`
 
@@ -244,12 +252,14 @@ export default function App() {
         compressionLevel,
         muteAudio,
         mp3Bitrate,
-        gifScale
+        gifScale,
+        gifFps,
+        playbackRate
       })
     } catch {
       // handled via onFFmpegEvent
     }
-  }, [metadata, filePath, outputDir, exportMode, muteAudio, compressionLevel, trim, crop, mp3Bitrate, gifScale])
+  }, [metadata, filePath, outputDir, exportMode, muteAudio, compressionLevel, trim, crop, mp3Bitrate, gifScale, gifFps, playbackRate])
 
   const handleCancel = useCallback(() => {
     window.electronAPI.cancelFFmpeg()
@@ -264,6 +274,32 @@ export default function App() {
     setExportError(null)
   }, [])
 
+  const handleGifPreview = useCallback(async () => {
+    if (!metadata || !filePath) return
+    setIsGeneratingGifPreview(true)
+    try {
+      const url = await window.electronAPI.previewGif({
+        mode: 'gif',
+        inputPath: filePath,
+        outputDir: '',
+        outputFileName: 'preview',
+        trim,
+        crop,
+        compressionLevel: 'none',
+        muteAudio: false,
+        gifScale,
+        gifFps,
+        playbackRate
+      })
+      setGifPreviewUrl(url)
+    } catch {
+      // silently ignore preview failures
+    } finally {
+      setIsGeneratingGifPreview(false)
+    }
+  }, [metadata, filePath, trim, crop, gifScale, gifFps, playbackRate])
+
+  const compressionLabel = compressionLevel === 'none' ? 'Original' : `${compressionLevel}% smaller`
   const timelineEnd = metadata ? (trim.enabled ? trim.endSeconds : metadata.durationSeconds) : 0
   const selectionDuration = metadata ? Math.max(timelineEnd - trim.startSeconds, 0) : 0
   const cropLabel = crop.enabled && exportMode !== 'audio' ? ' cropped' : ''
@@ -289,9 +325,6 @@ export default function App() {
         </div>
 
         <div className="app-actions">
-          {metadata && <div className="badge badge-accent">{formatDuration(selectionDuration)}</div>}
-          {metadata && <div className="badge">{formatBytes(estimatedSize)}</div>}
-
           <label className="theme-picker" aria-label="Theme">
             <span>Theme</span>
             <select
@@ -367,19 +400,12 @@ export default function App() {
         </aside>
 
         <section className="card-soft preview-panel">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <div>
-              <div className="section-title" style={{ marginBottom: 6 }}>Preview</div>
-              <div className="surface-note">Range {formatDuration(trim.startSeconds)} to {formatDuration(timelineEnd)}</div>
+          {metadata && (
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <div className="badge">{modeLabel}</div>
+              <div className="badge badge-accent">{formatDuration(selectionDuration)}</div>
             </div>
-
-            {metadata && (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div className="badge">{modeLabel}</div>
-                <div className="badge">{formatDuration(selectionDuration)}</div>
-              </div>
-            )}
-          </div>
+          )}
 
           <div style={{ flex: 1, minHeight: 0 }}>
             <VideoTimeline
@@ -392,9 +418,11 @@ export default function App() {
               end={timelineEnd}
               crop={crop}
               currentTime={videoCurrentTime}
+              playbackRate={playbackRate}
               onTimeUpdate={setVideoCurrentTime}
               onTrimChange={handleTrimChange}
               onCropChange={handleCropChange}
+              onPlaybackRateChange={setPlaybackRate}
             />
           </div>
         </section>
@@ -409,14 +437,29 @@ export default function App() {
               />
 
               <div className="card" style={{ padding: 12 }}>
-                <div className="section-title" style={{ marginBottom: 8 }}>Compression</div>
-                <CompressionPresets
-                  metadata={metadata}
-                  trim={trim}
-                  crop={crop}
-                  selected={compressionLevel}
-                  onChange={setCompressionLevel}
-                />
+                <button
+                  className="collapse-toggle"
+                  onClick={() => setCompressionExpanded(v => !v)}
+                >
+                  <span className="section-title" style={{ margin: 0 }}>Compression</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {!compressionExpanded && (
+                      <span className="badge" style={{ fontSize: 10 }}>{compressionLabel}</span>
+                    )}
+                    <span className={`section-chevron ${compressionExpanded ? 'open' : ''}`} />
+                  </div>
+                </button>
+                {compressionExpanded && (
+                  <div style={{ marginTop: 10 }}>
+                    <CompressionPresets
+                      metadata={metadata}
+                      trim={trim}
+                      crop={crop}
+                      selected={compressionLevel}
+                      onChange={setCompressionLevel}
+                    />
+                  </div>
+                )}
               </div>
 
               <ExportPanel
@@ -424,14 +467,18 @@ export default function App() {
                 muteAudio={muteAudio}
                 mp3Bitrate={mp3Bitrate}
                 gifScale={gifScale}
+                gifFps={gifFps}
                 estimatedSizeBytes={estimatedSize}
                 outputDir={outputDir}
                 onModeChange={setExportMode}
                 onMuteAudioChange={setMuteAudio}
                 onMp3BitrateChange={setMp3Bitrate}
                 onGifScaleChange={setGifScale}
+                onGifFpsChange={setGifFps}
                 onOutputDirChange={setOutputDir}
                 onExport={handleExport}
+                onPreviewGif={handleGifPreview}
+                isGeneratingGifPreview={isGeneratingGifPreview}
                 exporting={exportState === 'running'}
                 disabled={!metadata}
               />
@@ -478,6 +525,22 @@ export default function App() {
       </main>
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+
+      {gifPreviewUrl && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(8,10,16,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+          onClick={() => setGifPreviewUrl(null)}
+        >
+          <div className="card" style={{ maxWidth: 360, width: '100%' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div className="section-title">GIF Preview</div>
+              <button className="icon-button" onClick={() => setGifPreviewUrl(null)} aria-label="Close preview"><Icon name="x" /></button>
+            </div>
+            <img src={gifPreviewUrl} alt="GIF preview" style={{ maxWidth: '100%', borderRadius: 'var(--radius-sm)', display: 'block' }} />
+            <div className="surface-note" style={{ marginTop: 10 }}>Preview at 240px wide, up to 3 s. Click outside to close.</div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

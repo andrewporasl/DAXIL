@@ -32,6 +32,7 @@ export type CompressionLevel = 'none' | '25' | '50' | '75' | '90'
 export type ExportMode = 'video' | 'audio' | 'gif'
 export type Mp3Bitrate = 128 | 192 | 320
 export type GifScale = 320 | 480 | 640
+export type GifFps = 8 | 12 | 15 | 20
 
 export interface ExportOptions {
   mode: ExportMode
@@ -44,6 +45,8 @@ export interface ExportOptions {
   muteAudio: boolean
   mp3Bitrate?: Mp3Bitrate
   gifScale?: GifScale
+  gifFps?: GifFps
+  playbackRate?: number
 }
 
 export interface ProgressEvent {

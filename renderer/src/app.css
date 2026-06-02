@@ -319,11 +319,12 @@ label {
 }
 
 .brand-icon {
-  width: 18px;
-  height: 18px;
-  object-fit: contain;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  object-fit: cover;
   flex-shrink: 0;
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.22));
+  overflow: hidden;
 }
 
 .brand-copy {
@@ -347,6 +348,13 @@ label {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.app-shell[data-theme="mist"] .brand-subtitle,
+.app-shell[data-theme="sage"] .brand-subtitle,
+.app-shell[data-theme="blush"] .brand-subtitle,
+.app-shell[data-theme="linen"] .brand-subtitle {
+  color: var(--text);
 }
 
 .brand-modal-title {
@@ -446,6 +454,36 @@ label {
   font-size: 11px;
   text-align: center;
   line-height: 1.45;
+}
+
+.collapse-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  gap: 8px;
+}
+
+.section-chevron {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-dim);
+  border-bottom: 2px solid var(--text-dim);
+  transform: rotate(45deg);
+  transition: transform 0.18s ease;
+  flex-shrink: 0;
+  margin-bottom: 3px;
+}
+
+.section-chevron.open {
+  transform: rotate(-135deg);
+  margin-bottom: -3px;
 }
 
 .panel-divider {
@@ -669,6 +707,9 @@ label {
   margin-top: 12px;
   padding-top: 12px;
   background: linear-gradient(180deg, rgba(23, 27, 36, 0) 0%, var(--panel) 28%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .option-button {
@@ -894,15 +935,54 @@ label {
   color: var(--accent-hover);
 }
 
+.speed-select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.speed-select:hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
+
+.speed-select:focus {
+  outline: none;
+  border-color: var(--accent-border);
+  color: var(--text);
+}
+
+.speed-select--active {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.speed-select--active:hover {
+  background: var(--accent-dim);
+}
+
+.speed-select option {
+  background: var(--panel);
+  color: var(--text);
+}
+
 .settings-mark {
-  display: inline-flex;
   width: 34px;
   height: 34px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--accent-border);
   border-radius: var(--radius-sm);
-  background: var(--accent-soft);
+  object-fit: cover;
+  flex-shrink: 0;
+  overflow: hidden;
   color: var(--accent-hover);
   flex-shrink: 0;
 }

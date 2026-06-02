@@ -1,5 +1,5 @@
 import React from 'react'
-import type { ExportMode, Mp3Bitrate, GifScale } from '@shared/types'
+import type { ExportMode, Mp3Bitrate, GifScale, GifFps } from '@shared/types'
 import { formatBytes } from '../lib/sizeEstimator'
 import Icon from './Icon'
 
@@ -8,14 +8,18 @@ interface Props {
   muteAudio: boolean
   mp3Bitrate: Mp3Bitrate
   gifScale: GifScale
+  gifFps: GifFps
   estimatedSizeBytes: number
   outputDir: string
   onModeChange: (m: ExportMode) => void
   onMuteAudioChange: (v: boolean) => void
   onMp3BitrateChange: (br: Mp3Bitrate) => void
   onGifScaleChange: (s: GifScale) => void
+  onGifFpsChange: (fps: GifFps) => void
   onOutputDirChange: (d: string) => void
   onExport: () => void
+  onPreviewGif: () => void
+  isGeneratingGifPreview: boolean
   exporting: boolean
   disabled: boolean
 }
@@ -29,20 +33,25 @@ const FORMAT_OPTIONS: Array<{ label: string; sub: string; mode: ExportMode; mute
 
 const MP3_BITRATES: Mp3Bitrate[] = [128, 192, 320]
 const GIF_SCALES: GifScale[] = [320, 480, 640]
+const GIF_FPS_OPTIONS: GifFps[] = [8, 12, 15, 20]
 
 export default function ExportPanel({
   mode,
   muteAudio,
   mp3Bitrate,
   gifScale,
+  gifFps,
   estimatedSizeBytes,
   outputDir,
   onModeChange,
   onMuteAudioChange,
   onMp3BitrateChange,
   onGifScaleChange,
+  onGifFpsChange,
   onOutputDirChange,
   onExport,
+  onPreviewGif,
+  isGeneratingGifPreview,
   exporting,
   disabled
 }: Props) {
@@ -124,6 +133,23 @@ export default function ExportPanel({
           </div>
         )}
 
+        {mode === 'gif' && (
+          <div>
+            <div className="section-title" style={{ marginBottom: 8 }}>Frames / sec</div>
+            <div className="segmented-row">
+              {GIF_FPS_OPTIONS.map((fps) => (
+                <button
+                  key={fps}
+                  className={`segment-pill ${gifFps === fps ? 'selected' : ''}`}
+                  onClick={() => onGifFpsChange(fps)}
+                >
+                  {fps}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="metric-card export-metric-card">
           <span className="metric-label">Estimated Output</span>
           <span className="metric-value" style={{ fontSize: 22 }}>{formatBytes(estimatedSizeBytes)}</span>
@@ -146,6 +172,16 @@ export default function ExportPanel({
       </div>
 
       <div className="export-panel-footer">
+        {mode === 'gif' && (
+          <button
+            className="btn-ghost"
+            onClick={onPreviewGif}
+            disabled={disabled || exporting || isGeneratingGifPreview}
+            style={{ width: '100%' }}
+          >
+            {isGeneratingGifPreview ? 'Generating...' : 'Preview GIF'}
+          </button>
+        )}
         <button
           className="btn-primary"
           onClick={onExport}

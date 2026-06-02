@@ -11,6 +11,7 @@ declare global {
       getThumbnails: (filePath: string, duration: number, count: number) => Promise<string[]>
       runFFmpeg: (options: ExportOptions) => Promise<void>
       cancelFFmpeg: () => Promise<void>
+      previewGif: (options: ExportOptions) => Promise<string>
       onFFmpegEvent: (callback: (event: FFmpegEvent) => void) => () => void
       openFolder: (folderPath: string) => Promise<void>
       openNewWindow: () => Promise<void>

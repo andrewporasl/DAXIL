@@ -13,9 +13,11 @@ interface Props {
   end: number
   crop: CropSelection
   currentTime: number
+  playbackRate: number
   onTimeUpdate: (t: number) => void
   onTrimChange: (start: number, end: number) => void
   onCropChange: (crop: CropSelection) => void
+  onPlaybackRateChange: (rate: number) => void
 }
 
 type DragTarget = 'start' | 'end' | null
@@ -39,6 +41,8 @@ const STRIP_HEIGHT = 68
 const RAIL_HEIGHT = 16
 const HANDLE_W = 6
 
+const SPEED_OPTIONS = [0.25, 0.5, 1, 1.5, 2]
+
 export default function VideoTimeline({
   filePath,
   duration,
@@ -49,9 +53,11 @@ export default function VideoTimeline({
   end,
   crop,
   currentTime,
+  playbackRate,
   onTimeUpdate,
   onTrimChange,
-  onCropChange
+  onCropChange,
+  onPlaybackRateChange
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
@@ -96,7 +102,7 @@ export default function VideoTimeline({
     if (!video) return
 
     if (video.paused) {
-      if (currentTime < start || currentTime > end) setVideoTime(start)
+      if (currentTime < start || currentTime >= end) setVideoTime(start)
       try {
         await video.play()
       } catch {
@@ -245,13 +251,15 @@ export default function VideoTimeline({
   }, [dragging, duration, end, onTrimChange, posFromClientX, setVideoTime, start])
 
   useEffect(() => {
+    if (videoRef.current) videoRef.current.playbackRate = playbackRate
+  }, [playbackRate])
+
+  useEffect(() => {
     if (!isPlaying || duration <= 0) return
     if (currentTime >= end && end < duration - 0.05) {
-      videoRef.current?.pause()
-      setIsPlaying(false)
-      setVideoTime(end)
+      setVideoTime(start)
     }
-  }, [currentTime, duration, end, isPlaying, setVideoTime])
+  }, [currentTime, duration, end, isPlaying, setVideoTime, start])
 
   const handlePreviewScrub = (event: React.MouseEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -295,8 +303,7 @@ export default function VideoTimeline({
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <div className="badge badge-accent">In {formatDuration(start)}</div>
           <div className="badge badge-accent">Out {formatDuration(end)}</div>
-          {crop.enabled && <div className="badge badge-accent">Crop {Math.round(crop.width)} x {Math.round(crop.height)}</div>}
-          <div className="badge">Playhead {formatDuration(currentTime)}</div>
+          {crop.enabled && <div className="badge badge-accent">Crop {Math.round(crop.width)} × {Math.round(crop.height)}</div>}
         </div>
 
         <div style={{ display: 'flex', gap: 8 }}>
@@ -410,9 +417,21 @@ export default function VideoTimeline({
           <div style={{ width: `${playPct}%`, height: '100%', background: 'linear-gradient(90deg, var(--accent), var(--accent-2))' }} />
         </div>
 
-        <div style={{ minWidth: 92, textAlign: 'right', color: 'var(--text-muted)', fontSize: 11 }}>
+        <div style={{ color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>
           {formatDuration(currentTime)} / {formatDuration(duration)}
         </div>
+
+        <select
+          className={`speed-select${playbackRate !== 1 ? ' speed-select--active' : ''}`}
+          value={playbackRate}
+          onChange={(e) => onPlaybackRateChange(Number(e.target.value))}
+          aria-label="Playback speed"
+          title="Playback speed"
+        >
+          {SPEED_OPTIONS.map((rate) => (
+            <option key={rate} value={rate}>{rate}×</option>
+          ))}
+        </select>
       </div>
 
       <div

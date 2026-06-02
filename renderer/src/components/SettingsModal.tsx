@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import type { AppSettings } from '@shared/types'
 import Icon from './Icon'
+import brandIcon from '../../../resources/icon.png'
 
 interface Props {
   onClose: () => void
@@ -50,9 +51,7 @@ export default function SettingsModal({ onClose }: Props) {
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start' }}>
           <div className="brand-lockup">
-            <div className="settings-mark" aria-hidden="true">
-              <Icon name="settings" size={18} />
-            </div>
+            <img src={brandIcon} alt="" className="settings-mark" />
             <div className="brand-copy">
               <div className="section-title" style={{ marginBottom: 8 }}>Preferences</div>
               <div className="brand-modal-title">

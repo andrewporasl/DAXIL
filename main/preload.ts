@@ -20,6 +20,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cancelFFmpeg: (): Promise<void> =>
     ipcRenderer.invoke('ffmpeg:cancel'),
 
+  previewGif: (options: ExportOptions): Promise<string> =>
+    ipcRenderer.invoke('ffmpeg:gif-preview', options),
+
   onFFmpegEvent: (callback: (event: FFmpegEvent) => void): (() => void) => {
     const listener = (_: Electron.IpcRendererEvent, event: FFmpegEvent) => callback(event)
     ipcRenderer.on('ffmpeg:progress', listener)

@@ -9,10 +9,10 @@ const projectRoot = path.resolve(__dirname, '..')
 const resourcesDir = path.join(projectRoot, 'resources')
 const iconsetDir = path.join(resourcesDir, 'icon.iconset')
 
-const BG = [16, 19, 26, 255]
+const BG = [0, 0, 0, 0]
 const PANEL = [23, 27, 36, 255]
 const PANEL_EDGE = [44, 52, 71, 255]
-const CUTOUT = [23, 27, 36, 245]
+const CUTOUT = [23, 27, 36, 255]
 const G1 = [143, 167, 255, 255]
 const G2 = [240, 182, 214, 255]
 

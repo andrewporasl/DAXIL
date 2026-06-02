@@ -3,7 +3,7 @@ import * as path from 'path'
 import * as fs from 'fs'
 import type { WebContents } from 'electron'
 import { readMetadata } from './ffprobe'
-import { runFFmpeg, cancelFFmpeg, generateThumbnails } from './ffmpeg'
+import { runFFmpeg, cancelFFmpeg, generateThumbnails, gifPreview } from './ffmpeg'
 import { getDefaultBinarySetting, resolveBinaryPath } from './binaries'
 import type { ExportOptions, AppSettings, FFmpegEvent } from '../shared/types'
 import Store = require('electron-store')
@@ -70,6 +70,14 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('ffmpeg:cancel', () => cancelFFmpeg())
+
+  ipcMain.handle('ffmpeg:gif-preview', async (_, options: ExportOptions) => {
+    const s = await getStore()
+    const ffmpegPath = resolveBinaryPath('ffmpeg', s.get('ffmpegPath', getDefaultBinarySetting()) as string)
+    const ffprobePath = resolveBinaryPath('ffprobe', s.get('ffprobePath', getDefaultBinarySetting()) as string)
+    const meta = await readMetadata(options.inputPath, ffprobePath)
+    return gifPreview(options, meta.durationSeconds, meta.width, meta.height, ffmpegPath)
+  })
 
   ipcMain.handle('shell:open-folder', (_, folderPath: string) => {
     const dir = fs.statSync(folderPath).isDirectory() ? folderPath : path.dirname(folderPath)
