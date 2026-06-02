@@ -1,6 +1,6 @@
 {
   "name": "daxil",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local video editor and compressor powered by FFmpeg",
   "author": "Andrew Porasl <andrew@porasl.com>",
   "main": "out/main/index.js",
@@ -14,7 +14,8 @@
     "package:mac:x64": "npm run release:assets && npm run build && electron-builder --mac dmg zip --x64 --publish never",
     "package:mac:arm64": "npm run release:assets && npm run build && electron-builder --mac dmg zip --arm64 --publish never",
     "package:win": "npm run release:assets && npm run build && electron-builder --win nsis --x64 --publish never",
-    "lint": "tsc --noEmit"
+    "package:linux": "npm run release:assets && npm run build && electron-builder --linux AppImage tar.gz --x64 --publish never",
+    "lint": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json"
   },
   "dependencies": {
     "electron-store": "^8.2.0",

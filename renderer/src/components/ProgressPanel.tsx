@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react'
-import type { ProgressEvent } from '../../../../shared/types'
+import type { ProgressEvent } from '@shared/types'
 import { formatDuration } from '../lib/sizeEstimator'
 
 interface Props {

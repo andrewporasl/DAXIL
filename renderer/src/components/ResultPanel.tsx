@@ -1,6 +1,7 @@
 import React from 'react'
-import type { CompletionEvent } from '../../../../shared/types'
+import type { CompletionEvent } from '@shared/types'
 import { formatBytes } from '../lib/sizeEstimator'
+import Icon from './Icon'
 
 interface Props {
   result: CompletionEvent
@@ -35,10 +36,12 @@ export default function ResultPanel({ result, onOpenFolder, onReset }: Props) {
 
       <div style={{ display: 'flex', gap: 8 }}>
         <button className="btn-primary" onClick={onOpenFolder} style={{ flex: 1 }}>
-          Open folder
+          <Icon name="folder" size={16} />
+          <span>Open folder</span>
         </button>
         <button className="btn-ghost" onClick={onReset} style={{ flex: 1 }}>
-          New export
+          <Icon name="reset" size={16} />
+          <span>New export</span>
         </button>
       </div>
     </div>

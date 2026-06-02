@@ -1,5 +1,5 @@
 import React from 'react'
-import type { VideoMetadata, CompressionLevel, TrimRange } from '../../../../shared/types'
+import type { VideoMetadata, CompressionLevel, TrimRange } from '@shared/types'
 import { estimateCompressedSize, estimateTrimmedSize, formatBytes } from '../lib/sizeEstimator'
 
 interface Props {

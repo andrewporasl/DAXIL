@@ -6,20 +6,19 @@ import { readMetadata } from './ffprobe'
 import { runFFmpeg, cancelFFmpeg, generateThumbnails } from './ffmpeg'
 import { getDefaultBinarySetting, resolveBinaryPath } from './binaries'
 import type { ExportOptions, AppSettings, FFmpegEvent } from '../shared/types'
+import Store = require('electron-store')
 
-let store: { get: (key: string, def?: unknown) => unknown; set: (key: string, val: unknown) => void }
+let store: Store<AppSettings> | undefined
 
-async function getStore() {
+function getStore(): Store<AppSettings> {
   if (!store) {
-    const Store = (await import('electron-store')).default
-    const s = new Store<AppSettings>({
+    store = new Store<AppSettings>({
       defaults: {
         ffmpegPath: getDefaultBinarySetting(),
         ffprobePath: getDefaultBinarySetting(),
         defaultOutputDir: app.getPath('videos')
       }
     })
-    store = s as typeof store
   }
   return store
 }

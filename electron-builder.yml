@@ -13,6 +13,7 @@ asarUnpack:
   - node_modules/ffprobe-static/**
 mac:
   category: public.app-category.video
+  identity: null
   target:
     - target: dmg
     - target: zip
@@ -22,7 +23,20 @@ win:
     - target: nsis
       arch:
         - x64
+    - target: zip
+      arch:
+        - x64
   icon: resources/icon.ico
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+linux:
+  category: AudioVideo
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: tar.gz
+      arch:
+        - x64
+  icon: resources/icon.png
