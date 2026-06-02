@@ -17,6 +17,7 @@ type IconName =
   | 'music'
   | 'image'
   | 'export'
+  | 'crop'
   | 'x'
 
 interface Props {
@@ -131,6 +132,14 @@ const paths: Record<IconName, React.ReactNode> = {
       <path d="M12 3v12" />
       <path d="m7 10 5 5 5-5" />
       <path d="M5 21h14" />
+    </>
+  ),
+  crop: (
+    <>
+      <path d="M6 3v13a2 2 0 0 0 2 2h13" />
+      <path d="M3 6h13a2 2 0 0 1 2 2v13" />
+      <path d="M10 6v10" />
+      <path d="M6 10h10" />
     </>
   ),
   x: (

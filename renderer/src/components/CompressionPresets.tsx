@@ -1,10 +1,11 @@
 import React from 'react'
-import type { VideoMetadata, CompressionLevel, TrimRange } from '@shared/types'
+import type { VideoMetadata, CompressionLevel, TrimRange, CropSelection } from '@shared/types'
 import { estimateCompressedSize, estimateTrimmedSize, formatBytes } from '../lib/sizeEstimator'
 
 interface Props {
   metadata: VideoMetadata
   trim: TrimRange
+  crop: CropSelection
   selected: CompressionLevel
   onChange: (level: CompressionLevel) => void
 }
@@ -22,13 +23,13 @@ const PRESETS: Array<{
   { id: '90', label: '90% smaller', description: 'Smallest handoff', reductionFactor: 0.90 }
 ]
 
-export default function CompressionPresets({ metadata, trim, selected, onChange }: Props) {
+export default function CompressionPresets({ metadata, trim, crop, selected, onChange }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {PRESETS.map((preset) => {
         const estimated = preset.reductionFactor === 0
-          ? estimateTrimmedSize(metadata, trim)
-          : estimateCompressedSize(metadata, preset.reductionFactor, trim)
+          ? estimateTrimmedSize(metadata, trim, crop)
+          : estimateCompressedSize(metadata, preset.reductionFactor, trim, crop)
         const isSelected = selected === preset.id
 
         return (

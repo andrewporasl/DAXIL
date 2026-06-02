@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react'
+import type { CropSelection } from '@shared/types'
 import { formatDuration } from '../lib/sizeEstimator'
 import Icon from './Icon'
 
@@ -6,14 +7,33 @@ interface Props {
   filePath: string | null
   duration: number
   thumbnails: string[]
+  videoWidth: number
+  videoHeight: number
   start: number
   end: number
+  crop: CropSelection
   currentTime: number
   onTimeUpdate: (t: number) => void
   onTrimChange: (start: number, end: number) => void
+  onCropChange: (crop: CropSelection) => void
 }
 
 type DragTarget = 'start' | 'end' | null
+type CropDragTarget = 'move' | 'resize'
+
+interface DisplayBounds {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+interface CropDragState {
+  target: CropDragTarget
+  startClientX: number
+  startClientY: number
+  crop: CropSelection
+}
 
 const STRIP_HEIGHT = 68
 const RAIL_HEIGHT = 16
@@ -23,18 +43,42 @@ export default function VideoTimeline({
   filePath,
   duration,
   thumbnails,
+  videoWidth,
+  videoHeight,
   start,
   end,
+  crop,
   currentTime,
   onTimeUpdate,
-  onTrimChange
+  onTrimChange,
+  onCropChange
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const previewRef = useRef<HTMLDivElement>(null)
   const stripRef = useRef<HTMLDivElement>(null)
+  const displayBoundsRef = useRef<DisplayBounds | null>(null)
+  const cropDragRef = useRef<CropDragState | null>(null)
   const [dragging, setDragging] = useState<DragTarget>(null)
+  const [cropDragging, setCropDragging] = useState<CropDragTarget | null>(null)
+  const [displayBounds, setDisplayBounds] = useState<DisplayBounds | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
 
   const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value))
+
+  const clampCropToVideo = useCallback((nextCrop: CropSelection): CropSelection => {
+    if (videoWidth <= 0 || videoHeight <= 0) return nextCrop
+
+    const width = clamp(Math.round(nextCrop.width || videoWidth), Math.min(videoWidth, 32), videoWidth)
+    const height = clamp(Math.round(nextCrop.height || videoHeight), Math.min(videoHeight, 32), videoHeight)
+
+    return {
+      enabled: nextCrop.enabled,
+      width,
+      height,
+      x: Math.round(clamp(nextCrop.x, 0, videoWidth - width)),
+      y: Math.round(clamp(nextCrop.y, 0, videoHeight - height))
+    }
+  }, [videoHeight, videoWidth])
 
   const posFromClientX = useCallback((clientX: number, rect: DOMRect): number => {
     if (duration <= 0) return 0
@@ -66,6 +110,111 @@ export default function VideoTimeline({
   const seekBy = useCallback((delta: number) => {
     setVideoTime(currentTime + delta)
   }, [currentTime, setVideoTime])
+
+  const startCropDrag = useCallback((event: React.MouseEvent<HTMLDivElement>, target: CropDragTarget) => {
+    event.preventDefault()
+    event.stopPropagation()
+    cropDragRef.current = {
+      target,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      crop
+    }
+    setCropDragging(target)
+  }, [crop])
+
+  useEffect(() => {
+    const preview = previewRef.current
+    if (!preview || videoWidth <= 0 || videoHeight <= 0) {
+      displayBoundsRef.current = null
+      setDisplayBounds(null)
+      return
+    }
+
+    const updateBounds = () => {
+      const rect = preview.getBoundingClientRect()
+      if (rect.width <= 0 || rect.height <= 0) return
+
+      const containerRatio = rect.width / rect.height
+      const videoRatio = videoWidth / videoHeight
+      let width = rect.width
+      let height = rect.height
+      let left = 0
+      let top = 0
+
+      if (containerRatio > videoRatio) {
+        height = rect.height
+        width = height * videoRatio
+        left = (rect.width - width) / 2
+      } else {
+        width = rect.width
+        height = width / videoRatio
+        top = (rect.height - height) / 2
+      }
+
+      const nextBounds = { left, top, width, height }
+      displayBoundsRef.current = nextBounds
+      setDisplayBounds(nextBounds)
+    }
+
+    updateBounds()
+    const resizeObserver = new ResizeObserver(updateBounds)
+    resizeObserver.observe(preview)
+    window.addEventListener('resize', updateBounds)
+    return () => {
+      resizeObserver.disconnect()
+      window.removeEventListener('resize', updateBounds)
+    }
+  }, [videoHeight, videoWidth])
+
+  useEffect(() => {
+    if (!cropDragging) return
+
+    const onMove = (event: MouseEvent) => {
+      const drag = cropDragRef.current
+      const bounds = displayBoundsRef.current
+      if (!drag || !bounds || bounds.width <= 0 || bounds.height <= 0) return
+
+      const sourceScaleX = videoWidth / bounds.width
+      const sourceScaleY = videoHeight / bounds.height
+      const deltaX = (event.clientX - drag.startClientX) * sourceScaleX
+      const deltaY = (event.clientY - drag.startClientY) * sourceScaleY
+
+      if (drag.target === 'move') {
+        onCropChange(clampCropToVideo({
+          ...drag.crop,
+          enabled: true,
+          x: drag.crop.x + deltaX,
+          y: drag.crop.y + deltaY
+        }))
+        return
+      }
+
+      const maxWidth = Math.max(2, videoWidth - drag.crop.x)
+      const maxHeight = Math.max(2, videoHeight - drag.crop.y)
+      const minWidth = Math.min(maxWidth, 32)
+      const minHeight = Math.min(maxHeight, 32)
+
+      onCropChange(clampCropToVideo({
+        ...drag.crop,
+        enabled: true,
+        width: clamp(drag.crop.width + deltaX, minWidth, maxWidth),
+        height: clamp(drag.crop.height + deltaY, minHeight, maxHeight)
+      }))
+    }
+
+    const onUp = () => {
+      cropDragRef.current = null
+      setCropDragging(null)
+    }
+
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    return () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+  }, [clampCropToVideo, cropDragging, onCropChange, videoHeight, videoWidth])
 
   useEffect(() => {
     if (!dragging) return
@@ -120,6 +269,14 @@ export default function VideoTimeline({
   const endPct = duration > 0 ? (end / duration) * 100 : 100
   const playPct = duration > 0 ? clamp((currentTime / duration) * 100, 0, 100) : 0
   const selectionPct = Math.max(endPct - startPct, 0)
+  const cropBoxStyle = crop.enabled && displayBounds && videoWidth > 0 && videoHeight > 0
+    ? {
+        left: displayBounds.left + (crop.x / videoWidth) * displayBounds.width,
+        top: displayBounds.top + (crop.y / videoHeight) * displayBounds.height,
+        width: (crop.width / videoWidth) * displayBounds.width,
+        height: (crop.height / videoHeight) * displayBounds.height
+      }
+    : null
 
   if (!src) {
     return (
@@ -138,6 +295,7 @@ export default function VideoTimeline({
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <div className="badge badge-accent">In {formatDuration(start)}</div>
           <div className="badge badge-accent">Out {formatDuration(end)}</div>
+          {crop.enabled && <div className="badge badge-accent">Crop {Math.round(crop.width)} x {Math.round(crop.height)}</div>}
           <div className="badge">Playhead {formatDuration(currentTime)}</div>
         </div>
 
@@ -155,6 +313,8 @@ export default function VideoTimeline({
       </div>
 
       <div
+        ref={previewRef}
+        className="video-preview-frame"
         style={{
           position: 'relative',
           flex: 1,
@@ -185,6 +345,24 @@ export default function VideoTimeline({
           }}
         />
 
+        {cropBoxStyle && (
+          <div className="crop-overlay-layer">
+            <div
+              className={`crop-box ${cropDragging ? 'is-dragging' : ''}`}
+              onMouseDown={(event) => startCropDrag(event, 'move')}
+              onClick={(event) => event.stopPropagation()}
+              style={cropBoxStyle}
+            >
+              <div className="crop-grid" />
+              <div
+                className="crop-resize-handle"
+                onMouseDown={(event) => startCropDrag(event, 'resize')}
+                title="Resize crop"
+              />
+            </div>
+          </div>
+        )}
+
         {!isPlaying && (
           <button
             className="btn-ghost"
@@ -194,7 +372,8 @@ export default function VideoTimeline({
               left: '50%',
               top: '50%',
               transform: 'translate(-50%, -50%)',
-              background: 'rgba(23, 27, 36, 0.9)'
+              background: 'rgba(23, 27, 36, 0.9)',
+              zIndex: 5
             }}
           >
             <Icon name="play" />

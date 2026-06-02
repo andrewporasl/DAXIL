@@ -2,12 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react'
 import brandIcon from '../../resources/icon.png'
 import type {
   VideoMetadata, TrimRange, ExportMode, Mp3Bitrate, GifScale,
-  CompressionLevel, ProgressEvent, CompletionEvent, FFmpegEvent
+  CompressionLevel, ProgressEvent, CompletionEvent, FFmpegEvent, CropSelection
 } from '../../shared/types'
 import FileDropZone from './components/FileDropZone'
 import VideoTimeline from './components/VideoTimeline'
 import MetadataCard from './components/MetadataCard'
 import CompressionPresets from './components/CompressionPresets'
+import CropPanel from './components/CropPanel'
 import ExportPanel from './components/ExportPanel'
 import ProgressPanel from './components/ProgressPanel'
 import ResultPanel from './components/ResultPanel'
@@ -52,6 +53,35 @@ const REDUCTION_MAP: Record<CompressionLevel, number> = {
   none: 0, '25': 0.25, '50': 0.50, '75': 0.75, '90': 0.90
 }
 
+function clamp(value: number, low: number, high: number): number {
+  return Math.max(low, Math.min(high, value))
+}
+
+function defaultCrop(metadata: VideoMetadata, enabled = false): CropSelection {
+  const width = Math.max(2, Math.round(metadata.width * 0.8))
+  const height = Math.max(2, Math.round(metadata.height * 0.8))
+  return {
+    enabled,
+    x: Math.round((metadata.width - width) / 2),
+    y: Math.round((metadata.height - height) / 2),
+    width,
+    height
+  }
+}
+
+function clampCrop(crop: CropSelection, metadata: VideoMetadata): CropSelection {
+  const width = clamp(Math.round(crop.width || metadata.width), Math.min(metadata.width, 32), Math.max(metadata.width, 2))
+  const height = clamp(Math.round(crop.height || metadata.height), Math.min(metadata.height, 32), Math.max(metadata.height, 2))
+
+  return {
+    enabled: crop.enabled,
+    width,
+    height,
+    x: Math.round(clamp(crop.x, 0, metadata.width - width)),
+    y: Math.round(clamp(crop.y, 0, metadata.height - height))
+  }
+}
+
 export default function App() {
   const [filePath, setFilePath] = useState<string | null>(null)
   const [metadata, setMetadata] = useState<VideoMetadata | null>(null)
@@ -60,6 +90,7 @@ export default function App() {
   const [thumbnails, setThumbnails] = useState<string[]>([])
 
   const [trim, setTrim] = useState<TrimRange>({ enabled: false, startSeconds: 0, endSeconds: 0 })
+  const [crop, setCrop] = useState<CropSelection>({ enabled: false, x: 0, y: 0, width: 0, height: 0 })
   const [videoCurrentTime, setVideoCurrentTime] = useState(0)
 
   const [compressionLevel, setCompressionLevel] = useState<CompressionLevel>('none')
@@ -126,6 +157,7 @@ export default function App() {
       const meta = await window.electronAPI.getMetadata(fp)
       setMetadata(meta)
       setTrim({ enabled: false, startSeconds: 0, endSeconds: meta.durationSeconds })
+      setCrop(defaultCrop(meta))
 
       window.electronAPI.getThumbnails(fp, meta.durationSeconds, 16)
         .then(setThumbnails)
@@ -149,6 +181,10 @@ export default function App() {
     })
   }, [metadata])
 
+  const handleCropChange = useCallback((nextCrop: CropSelection) => {
+    setCrop(() => metadata ? clampCrop(nextCrop, metadata) : nextCrop)
+  }, [metadata])
+
   const handleOpenVideo = useCallback(async () => {
     if (isBusy) return
     const nextFilePath = await window.electronAPI.openFile()
@@ -163,10 +199,10 @@ export default function App() {
     ? exportMode === 'audio'
       ? estimateMp3Size(metadata, mp3Bitrate, trim)
       : exportMode === 'gif'
-        ? estimateGifSize(metadata, gifScale, trim)
+        ? estimateGifSize(metadata, gifScale, trim, crop)
         : REDUCTION_MAP[compressionLevel] > 0
-          ? estimateCompressedSize(metadata, REDUCTION_MAP[compressionLevel], trim)
-          : estimateTrimmedSize(metadata, trim)
+          ? estimateCompressedSize(metadata, REDUCTION_MAP[compressionLevel], trim, crop)
+          : estimateTrimmedSize(metadata, trim, crop)
     : 0
 
   const handleExport = useCallback(async () => {
@@ -183,12 +219,17 @@ export default function App() {
     setExportError(null)
 
     const baseName = metadata.fileName.replace(/\.[^.]+$/, '')
+    const videoModifiers = [
+      muteAudio ? 'muted' : null,
+      compressionLevel !== 'none' ? `${compressionLevel}pct` : null,
+      trim.enabled ? 'trimmed' : null,
+      crop.enabled ? 'cropped' : null
+    ].filter(Boolean)
+
     const suffix =
       exportMode === 'audio' ? '_audio' :
-        exportMode === 'gif' ? '_animated' :
-          muteAudio ? '_muted' :
-            compressionLevel !== 'none' ? `_${compressionLevel}pct` :
-              trim.enabled ? '_trimmed' : '_export'
+        exportMode === 'gif' ? `_animated${crop.enabled ? '_cropped' : ''}` :
+          videoModifiers.length > 0 ? `_${videoModifiers.join('_')}` : '_export'
 
     const outputFileName = `${baseName}${suffix}`
 
@@ -199,6 +240,7 @@ export default function App() {
         outputDir,
         outputFileName,
         trim,
+        crop,
         compressionLevel,
         muteAudio,
         mp3Bitrate,
@@ -207,7 +249,7 @@ export default function App() {
     } catch {
       // handled via onFFmpegEvent
     }
-  }, [metadata, filePath, outputDir, exportMode, muteAudio, compressionLevel, trim, mp3Bitrate, gifScale])
+  }, [metadata, filePath, outputDir, exportMode, muteAudio, compressionLevel, trim, crop, mp3Bitrate, gifScale])
 
   const handleCancel = useCallback(() => {
     window.electronAPI.cancelFFmpeg()
@@ -224,15 +266,14 @@ export default function App() {
 
   const timelineEnd = metadata ? (trim.enabled ? trim.endSeconds : metadata.durationSeconds) : 0
   const selectionDuration = metadata ? Math.max(timelineEnd - trim.startSeconds, 0) : 0
+  const cropLabel = crop.enabled && exportMode !== 'audio' ? ' cropped' : ''
   const modeLabel = exportMode === 'audio'
     ? `MP3 ${mp3Bitrate}k`
     : exportMode === 'gif'
-      ? `GIF ${gifScale}px`
+      ? `GIF ${gifScale}px${cropLabel}`
       : muteAudio
-        ? 'MP4 mute'
-        : compressionLevel === 'none'
-          ? 'MP4 original'
-          : `MP4 ${compressionLevel}%`
+        ? `MP4 mute${cropLabel}`
+        : `${compressionLevel === 'none' ? 'MP4 original' : `MP4 ${compressionLevel}%`}${cropLabel}`
 
   return (
     <div className="app-shell" data-theme={theme}>
@@ -345,11 +386,15 @@ export default function App() {
               filePath={filePath}
               duration={metadata?.durationSeconds ?? 0}
               thumbnails={thumbnails}
+              videoWidth={metadata?.width ?? 0}
+              videoHeight={metadata?.height ?? 0}
               start={trim.startSeconds}
               end={timelineEnd}
+              crop={crop}
               currentTime={videoCurrentTime}
               onTimeUpdate={setVideoCurrentTime}
               onTrimChange={handleTrimChange}
+              onCropChange={handleCropChange}
             />
           </div>
         </section>
@@ -357,11 +402,18 @@ export default function App() {
         <aside className="card-soft side-rail">
           {metadata ? (
             <div className="side-rail-stack">
+              <CropPanel
+                metadata={metadata}
+                crop={crop}
+                onCropChange={handleCropChange}
+              />
+
               <div className="card" style={{ padding: 12 }}>
                 <div className="section-title" style={{ marginBottom: 8 }}>Compression</div>
                 <CompressionPresets
                   metadata={metadata}
                   trim={trim}
+                  crop={crop}
                   selected={compressionLevel}
                   onChange={setCompressionLevel}
                 />

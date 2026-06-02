@@ -60,6 +60,8 @@ export function registerIpcHandlers(): void {
       options,
       meta.fileSizeBytes,
       meta.durationSeconds,
+      meta.width,
+      meta.height,
       ffmpegPath,
       (evt: FFmpegEvent) => {
         if (!sender.isDestroyed()) sender.send('ffmpeg:progress', evt)

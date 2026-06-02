@@ -1,4 +1,4 @@
-import type { VideoMetadata, TrimRange, Mp3Bitrate, GifScale } from '../../../shared/types'
+import type { VideoMetadata, TrimRange, Mp3Bitrate, GifScale, CropSelection } from '../../../shared/types'
 
 const OVERESTIMATE = 1.15
 
@@ -9,22 +9,30 @@ function effectiveDuration(meta: VideoMetadata, trim: TrimRange): number {
   return meta.durationSeconds
 }
 
-export function estimateTrimmedSize(meta: VideoMetadata, trim: TrimRange): number {
+function cropAreaFactor(meta: VideoMetadata, crop?: CropSelection): number {
+  if (!crop?.enabled || crop.width <= 0 || crop.height <= 0 || meta.width <= 0 || meta.height <= 0) return 1
+  const width = Math.max(1, Math.min(crop.width, meta.width))
+  const height = Math.max(1, Math.min(crop.height, meta.height))
+  return Math.max(0.05, Math.min((width * height) / (meta.width * meta.height), 1))
+}
+
+export function estimateTrimmedSize(meta: VideoMetadata, trim: TrimRange, crop?: CropSelection): number {
   const duration = effectiveDuration(meta, trim)
   const fullDuration = meta.durationSeconds > 0 ? meta.durationSeconds : 1
   const ratio = duration / fullDuration
-  return Math.round(meta.fileSizeBytes * ratio * OVERESTIMATE)
+  return Math.round(meta.fileSizeBytes * ratio * cropAreaFactor(meta, crop) * OVERESTIMATE)
 }
 
 export function estimateCompressedSize(
   meta: VideoMetadata,
   reductionFactor: number,
-  trim: TrimRange
+  trim: TrimRange,
+  crop?: CropSelection
 ): number {
   const duration = effectiveDuration(meta, trim)
   const fullDuration = meta.durationSeconds > 0 ? meta.durationSeconds : 1
   const trimRatio = duration / fullDuration
-  const baseSize = meta.fileSizeBytes * trimRatio
+  const baseSize = meta.fileSizeBytes * trimRatio * cropAreaFactor(meta, crop)
   return Math.round(baseSize * (1 - reductionFactor) * OVERESTIMATE)
 }
 
@@ -40,10 +48,13 @@ export function estimateMp3Size(
 export function estimateGifSize(
   meta: VideoMetadata,
   scale: GifScale,
-  trim: TrimRange
+  trim: TrimRange,
+  crop?: CropSelection
 ): number {
   const duration = effectiveDuration(meta, trim)
-  const height = Math.round(scale * 9 / 16)
+  const sourceWidth = crop?.enabled && crop.width > 0 ? crop.width : meta.width
+  const sourceHeight = crop?.enabled && crop.height > 0 ? crop.height : meta.height
+  const height = sourceWidth > 0 ? Math.round((scale / sourceWidth) * sourceHeight) : Math.round(scale * 9 / 16)
   // ~12fps, ~0.35 bytes/pixel after palette compression
   return Math.round(scale * height * 12 * duration * 0.35 * OVERESTIMATE)
 }

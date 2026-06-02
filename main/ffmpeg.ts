@@ -2,7 +2,7 @@ import { spawn, ChildProcess } from 'child_process'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
-import type { ExportOptions, FFmpegEvent } from '../shared/types'
+import type { CropSelection, ExportOptions, FFmpegEvent } from '../shared/types'
 
 let currentProcess: ChildProcess | null = null
 
@@ -27,6 +27,37 @@ const REDUCTION_MAP: Record<string, number> = {
 }
 
 type ProgressSender = (event: FFmpegEvent) => void
+
+function clamp(value: number, low: number, high: number): number {
+  return Math.max(low, Math.min(high, value))
+}
+
+function even(value: number): number {
+  return Math.floor(value / 2) * 2
+}
+
+function normalizeCrop(
+  crop: CropSelection | undefined,
+  videoWidth: number,
+  videoHeight: number
+): CropSelection | null {
+  if (!crop?.enabled || videoWidth <= 1 || videoHeight <= 1) return null
+
+  const maxWidth = even(videoWidth)
+  const maxHeight = even(videoHeight)
+  if (maxWidth <= 0 || maxHeight <= 0) return null
+
+  const width = clamp(even(crop.width), 2, maxWidth)
+  const height = clamp(even(crop.height), 2, maxHeight)
+  const x = clamp(even(crop.x), 0, Math.max(0, videoWidth - width))
+  const y = clamp(even(crop.y), 0, Math.max(0, videoHeight - height))
+
+  return { enabled: true, x, y, width, height }
+}
+
+function cropFilter(crop: CropSelection | null): string | null {
+  return crop ? `crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}` : null
+}
 
 function spawnProcess(
   cmd: string,
@@ -60,11 +91,15 @@ function spawnProcess(
 export function buildFFmpegArgs(
   options: ExportOptions,
   fileSizeBytes: number,
-  durationSeconds: number
+  durationSeconds: number,
+  videoWidth = 0,
+  videoHeight = 0
 ): string[] {
   const { mode, inputPath, trim, compressionLevel, muteAudio, mp3Bitrate = 192 } = options
   const hasTrim = trim.enabled && (trim.startSeconds > 0 || trim.endSeconds < durationSeconds - 0.1)
   const effectiveDur = hasTrim ? trim.endSeconds - trim.startSeconds : durationSeconds
+  const normalizedCrop = normalizeCrop(options.crop, videoWidth, videoHeight)
+  const videoFilter = mode === 'audio' ? null : cropFilter(normalizedCrop)
 
   const args: string[] = ['-y', '-i', inputPath]
 
@@ -80,7 +115,7 @@ export function buildFFmpegArgs(
 
   // video mode
   const reductionFactor = REDUCTION_MAP[compressionLevel] ?? 0
-  const needsEncode = reductionFactor > 0 || hasTrim
+  const needsEncode = reductionFactor > 0 || hasTrim || Boolean(videoFilter)
 
   if (!needsEncode) {
     // no compression, no trim → stream copy
@@ -93,6 +128,7 @@ export function buildFFmpegArgs(
     // bitrate-based compression
     const targetSizeBytes = fileSizeBytes * (1 - reductionFactor)
     const vbr = calcVideoBitrateKbps(targetSizeBytes, effectiveDur)
+    if (videoFilter) args.push('-vf', videoFilter)
     args.push('-c:v', 'libx264', '-preset', 'fast', '-b:v', `${vbr}k`)
     if (muteAudio) {
       args.push('-an')
@@ -101,6 +137,7 @@ export function buildFFmpegArgs(
     }
   } else {
     // trim only, no compression — high quality re-encode
+    if (videoFilter) args.push('-vf', videoFilter)
     args.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '18')
     if (muteAudio) {
       args.push('-an')
@@ -116,6 +153,8 @@ export function buildFFmpegArgs(
 async function runGif(
   options: ExportOptions,
   durationSeconds: number,
+  videoWidth: number,
+  videoHeight: number,
   ffmpegPath: string,
   onEvent: ProgressSender
 ): Promise<string> {
@@ -124,13 +163,17 @@ async function runGif(
   const effectiveDur = hasTrim ? trim.endSeconds - trim.startSeconds : durationSeconds
   const scale = options.gifScale || 480
   const fps = 12
+  const normalizedCrop = normalizeCrop(options.crop, videoWidth, videoHeight)
+  const videoFilter = cropFilter(normalizedCrop)
+  const scaleFilter = `scale=${scale}:-1:flags=lanczos`
+  const gifFilter = ['fps=' + fps, videoFilter, scaleFilter].filter(Boolean).join(',')
   const palettePath = path.join(os.tmpdir(), `daxil_palette_${Date.now()}.png`)
   const outputPath = path.join(options.outputDir, options.outputFileName + '.gif')
 
   // Pass 1: generate palette
   const paletteArgs = ['-y']
   if (hasTrim) paletteArgs.push('-ss', trim.startSeconds.toString(), '-to', trim.endSeconds.toString())
-  paletteArgs.push('-i', inputPath, '-vf', `fps=${fps},scale=${scale}:-1:flags=lanczos,palettegen`, palettePath)
+  paletteArgs.push('-i', inputPath, '-vf', `${gifFilter},palettegen`, palettePath)
 
   await spawnProcess(ffmpegPath, paletteArgs)
   onEvent({ type: 'progress', currentSeconds: effectiveDur * 0.4, totalSeconds: effectiveDur, percent: 40, logLine: 'Palette ready, encoding GIF...' })
@@ -141,7 +184,7 @@ async function runGif(
   gifArgs.push(
     '-i', inputPath,
     '-i', palettePath,
-    '-lavfi', `fps=${fps},scale=${scale}:-1:flags=lanczos[x];[x][1:v]paletteuse`,
+    '-lavfi', `${gifFilter}[x];[x][1:v]paletteuse`,
     outputPath
   )
 
@@ -165,17 +208,19 @@ export function runFFmpeg(
   options: ExportOptions,
   fileSizeBytes: number,
   durationSeconds: number,
+  videoWidth: number,
+  videoHeight: number,
   ffmpegPath: string,
   onEvent: ProgressSender
 ): Promise<string> {
   if (options.mode === 'gif') {
-    return runGif(options, durationSeconds, ffmpegPath, onEvent)
+    return runGif(options, durationSeconds, videoWidth, videoHeight, ffmpegPath, onEvent)
   }
 
   return new Promise((resolve, reject) => {
     const hasTrim = options.trim.enabled && (options.trim.startSeconds > 0 || options.trim.endSeconds < durationSeconds - 0.1)
     const effectiveDuration = hasTrim ? options.trim.endSeconds - options.trim.startSeconds : durationSeconds
-    const args = buildFFmpegArgs(options, fileSizeBytes, durationSeconds)
+    const args = buildFFmpegArgs(options, fileSizeBytes, durationSeconds, videoWidth, videoHeight)
     const outputPath = args[args.length - 1]
 
     const proc = spawn(ffmpegPath, args)

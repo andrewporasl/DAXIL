@@ -20,6 +20,14 @@ export interface TrimRange {
   endSeconds: number
 }
 
+export interface CropSelection {
+  enabled: boolean
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export type CompressionLevel = 'none' | '25' | '50' | '75' | '90'
 export type ExportMode = 'video' | 'audio' | 'gif'
 export type Mp3Bitrate = 128 | 192 | 320
@@ -31,6 +39,7 @@ export interface ExportOptions {
   outputDir: string
   outputFileName: string
   trim: TrimRange
+  crop: CropSelection
   compressionLevel: CompressionLevel
   muteAudio: boolean
   mp3Bitrate?: Mp3Bitrate
