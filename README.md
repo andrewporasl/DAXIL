@@ -4,6 +4,20 @@ DAXIL is a desktop video utility for trimming, compressing, and exporting local 
 
 Release builds include bundled `ffmpeg` and `ffprobe` binaries. End users do not need Node.js, FFmpeg, FFprobe, or a command-line setup to use the packaged application.
 
+## Screenshots
+
+Main workspace with preview, metadata, timeline, and export controls:
+
+![DAXIL main workspace](resources/showcase/dashboardUI.png)
+
+Crop controls for framing the exported clip:
+
+![DAXIL crop controls](resources/showcase/crop.png)
+
+Export options for video, audio, GIF, compression, and output settings:
+
+![DAXIL export options](resources/showcase/exportOptions.png)
+
 ## Product Scope
 
 DAXIL focuses on fast local media handoff:

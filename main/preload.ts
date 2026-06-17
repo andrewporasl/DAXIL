@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { ExportOptions, FFmpegEvent, AppSettings } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   openFolderDialog: (): Promise<string | null> =>
     ipcRenderer.invoke('dialog:open-folder'),
+
+  getPathForFile: (file: File): string =>
+    webUtils.getPathForFile(file),
 
   getMetadata: (filePath: string) =>
     ipcRenderer.invoke('ffprobe:metadata', filePath),

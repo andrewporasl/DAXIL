@@ -7,6 +7,7 @@ declare global {
     electronAPI: {
       openFile: () => Promise<string | null>
       openFolderDialog: () => Promise<string | null>
+      getPathForFile: (file: File) => string
       getMetadata: (filePath: string) => Promise<VideoMetadata>
       getThumbnails: (filePath: string, duration: number, count: number) => Promise<string[]>
       runFFmpeg: (options: ExportOptions) => Promise<void>

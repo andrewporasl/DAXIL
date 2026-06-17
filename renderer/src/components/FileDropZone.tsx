@@ -21,7 +21,7 @@ export default function FileDropZone({ onFilePicked, disabled, hasVideo }: Props
     if (disabled) return
     const file = event.dataTransfer.files[0]
     if (!file) return
-    const filePath = (file as File & { path?: string }).path
+    const filePath = window.electronAPI.getPathForFile(file)
     if (filePath) onFilePicked(filePath)
   }, [disabled, onFilePicked])
 
