@@ -35,6 +35,7 @@ DAXIL focuses on fast local media handoff:
 - Load local video files through the add target, drag and drop, or the header open action.
 - Preview video in-app with playback controls, timeline scrubbing, and generated thumbnails.
 - Set trim ranges with timeline handles or direct in/out controls.
+- Set playback rate for export (0.25x - 2x).
 - Export to `MP4`, muted `MP4`, `MP3`, or `GIF`.
 - Apply compression presets from source quality through aggressive reduction.
 - Estimate output size before rendering.
@@ -182,6 +183,3 @@ DAXIL is a local desktop application. It does not upload media files, require ac
 
 Current public builds are unsigned. macOS may display the standard first-run warning for unsigned applications. Users can open the app through the macOS contextual `Open` command or through `System Settings > Privacy & Security`.
 
-## License
-
-No license file is currently included. Add a license before distributing or accepting external contributions beyond private/internal use.
