@@ -23,6 +23,11 @@ Release builds include bundled `ffmpeg` and `ffprobe` binaries. End users do not
   <img src="resources/showcase/exportOptions.png" alt="DAXIL export options" width="250" />
 </div>
 
+## Dark and Light Themes:
+<div align="center">
+  <img src="resources/showcase/themes.png" alt="DAXIL Themes" width="850" />
+</div>
+
 ## Product Scope
 
 DAXIL focuses on fast local media handoff:
