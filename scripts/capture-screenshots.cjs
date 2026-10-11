@@ -133,18 +133,18 @@ app.whenReady().then(async () => {
 
     // Load the project and build a two-track edit with audio.
     await click('[aria-label="Import media"]')
-    await waitFor(() => js('document.querySelectorAll(".timeline-clip").length === 1 && document.querySelector("video") && document.querySelector("video").readyState >= 2'), 'main clip did not load')
+    await waitFor(() => js('document.querySelectorAll(".clip-video").length === 1 && document.querySelector("video") && document.querySelector("video").readyState >= 2'), 'main clip did not load')
     await click('[aria-label="Import media"]')
     await waitFor(() => js('document.querySelectorAll(".media-asset").length === 4'), 'pool did not fill')
-    await poolDrop(3, '.timeline-viewport', 0.98)                 // cellular → end of V1
-    await poolDrop(2, '.lanes-audio .lane', 0.02)                 // ambient pad → A1
-    await poolDrop(1, '.lanes-video .lane', 0.12)                 // fractal → V2
-    await waitFor(() => js('document.querySelectorAll(".video-clip").length === 1'), 'stack failed')
+    await poolDrop(3, '.track-video[data-track="0"]', 0.66)        // cellular → V1 after the first clip
+    await poolDrop(2, '.track-audio[data-track="0"]', 0.02)       // ambient pad → A1
+    await poolDrop(1, '.track-video[data-track="1"]', 0.12)       // fractal → V2
+    await waitFor(() => js(`document.querySelectorAll('.track-video[data-track="1"] .clip-video').length === 1`), 'stack failed')
     await seek(0.3)
-    await waitFor(() => js('document.querySelectorAll(".overlay-layer").length === 1'), 'overlay not visible')
+    await waitFor(() => js('document.querySelectorAll(".layer:not(.is-full)").length === 1'), 'overlay not visible')
     // Select the stacked clip so the inspector shows its transform.
-    await js(`document.querySelector('.overlay-layer').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 0, clientY: 0 })); document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))`)
-    await waitFor(() => js('document.querySelector(".overlay-layer").classList.contains("is-selected")'), 'overlay not selected')
+    await js(`document.querySelector('.layer:not(.is-full)').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 0, clientY: 0 })); document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))`)
+    await waitFor(() => js('document.querySelector(".layer:not(.is-full)").classList.contains("is-selected")'), 'overlay not selected')
     await js(`document.querySelectorAll('.media-asset').forEach(a => a.classList.remove('is-selected'))`)
     await shoot('editor.png', null, 1.1)
     await shoot('timeline-stack.png', '.panel-timeline', 1.5)
@@ -161,7 +161,7 @@ app.whenReady().then(async () => {
     await waitFor(() => js('document.querySelector(".link-box-progress") && document.querySelector(".link-box-progress").textContent.includes("64%")'), 'download progress did not show')
     await shoot('link-import.png', '.panel-media', 2)
     releaseDownload()
-    await waitFor(() => js('document.querySelectorAll(".timeline-clip").length === 3'), 'downloaded clip was not added')
+    await waitFor(() => js('document.querySelectorAll(".clip-video").length === 4 && !document.querySelector(".link-box-progress")'), 'downloaded clip was not added')
 
     // Quick GIF result.
     await setInput('.link-box-input', 'https://youtu.be/dQw4w9WgXcQ')

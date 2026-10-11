@@ -1,5 +1,3 @@
-import type { AudioClip, MediaAsset, OverlayClip } from '../../../shared/types'
-import type { TimelineClip } from './clips'
 
 export const MIN_ZOOM = 1
 
@@ -49,72 +47,6 @@ export function parseMediaIds(data: string): string[] {
     if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === 'string')
   } catch { /* plain id */ }
   return [data]
-}
-
-export const OVERLAY_DEFAULTS = { x: 0.58, y: 0.05, scale: 0.4, opacity: 1 }
-
-export type InsertTarget = 'sequence' | { track: number }
-
-// Place assets in order. Video goes into the V1 sequence at successive boundaries, or
-// onto a stacked track back to back from `time`; audio runs back to back from `time`.
-export function insertAssets(
-  clips: TimelineClip[], audio: AudioClip[], overlays: OverlayClip[], assets: MediaAsset[], boundary: number, time: number, newId: () => string, target: InsertTarget = 'sequence'
-): { clips: TimelineClip[]; audio: AudioClip[]; overlays: OverlayClip[]; videoIds: string[]; audioIds: string[]; overlayIds: string[] } {
-  const nextClips = [...clips]
-  const videoIds: string[] = []
-  const overlayIds: string[] = []
-  const nextOverlays = [...overlays]
-  const videos = assets.filter(asset => asset.kind === 'video')
-  if (target === 'sequence') {
-    let at = Math.max(0, Math.min(clips.length, boundary))
-    for (const asset of videos) {
-      const id = newId()
-      nextClips.splice(at++, 0, { id, mediaId: asset.id, startSeconds: 0, endSeconds: asset.metadata.durationSeconds })
-      videoIds.push(id)
-    }
-  }
-  const total = nextClips.reduce((sum, clip) => sum + clip.endSeconds - clip.startSeconds, 0)
-  if (target !== 'sequence') {
-    let start = Math.max(0, time)
-    for (const asset of videos) {
-      start = Math.min(start, total - 0.1)
-      if (start < 0) break
-      const length = Math.min(asset.metadata.durationSeconds, total - start)
-      if (length < 0.1) break
-      const id = newId()
-      nextOverlays.push({ id, mediaId: asset.id, startSeconds: 0, endSeconds: length, timelineStart: start, track: Math.max(1, Math.round(target.track)), ...OVERLAY_DEFAULTS })
-      overlayIds.push(id)
-      start += length
-    }
-  }
-  const nextAudio = [...audio]
-  const audioIds: string[] = []
-  let start = Math.max(0, time)
-  for (const asset of assets) {
-    if (asset.kind !== 'audio') continue
-    start = Math.min(start, total - 0.1)
-    if (start < 0) break
-    const length = Math.min(asset.metadata.durationSeconds, total - start)
-    if (length < 0.1) break
-    const id = newId()
-    nextAudio.push({ id, mediaId: asset.id, startSeconds: 0, endSeconds: length, timelineStart: start, volume: 1 })
-    audioIds.push(id)
-    start += length
-  }
-  return {
-    clips: videoIds.length ? nextClips : clips,
-    audio: audioIds.length ? nextAudio : audio,
-    overlays: overlayIds.length ? nextOverlays : overlays,
-    videoIds, audioIds, overlayIds
-  }
-}
-
-// Clips on V2 and above, from the top track down, with one empty track to drop onto.
-export function overlayTracks(overlays: OverlayClip[]): number[] {
-  const top = overlays.reduce((max, clip) => Math.max(max, clip.track), 0)
-  const tracks: number[] = []
-  for (let track = top + 1; track >= 1; track--) tracks.push(track)
-  return tracks
 }
 
 export function rectsIntersect(a: { left: number; right: number; top: number; bottom: number }, b: { left: number; right: number; top: number; bottom: number }): boolean {

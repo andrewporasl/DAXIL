@@ -12,8 +12,8 @@ Built with Electron, React, TypeScript and FFmpeg. Everything runs on your machi
 
 - **Resolve-lite layout.** Media pool → preview → inspector, with the timeline spanning the full width underneath. Drag the divider to resize the timeline.
 - **Paste a link.** Drop a YouTube, X/Twitter or other video URL into the link box (or just press Ctrl+V anywhere). It downloads, joins the media pool and is added to the end of the timeline. Or press **GIF** to turn the link straight into a GIF with no editing step.
-- **Stack video.** Drop a clip onto V2 or above to layer it over V1. Drag it around the preview, resize it from the corner, set opacity, fill the frame — picture-in-picture without a filter graph in sight.
-- **Edit with your hands.** Trim by dragging clip edges, split at the playhead, rubber-band select across tracks, drag groups, undo everything.
+- **Real tracks.** V1…Vn and A1…An are all free-form: place clips anywhere, leave gaps, drag clips between tracks, snap to neighbours and the playhead. Higher video tracks draw on top; drag a layer around the preview, resize it from the corner, set opacity — picture-in-picture without a filter graph in sight.
+- **Edit with your hands.** Trim by dragging clip edges (the out point stays put), split everything under the playhead, rubber-band select across tracks, drag groups, nudge with the arrow keys, undo everything.
 - **Zoom that stays put.** Ctrl+wheel or pinch zooms around the cursor; the buttons zoom around the playhead.
 - **Deliver.** MP4, silent MP4, MP3 or GIF, with bitrate-targeted compression presets, cropping, speed, and a "Check size" that encodes a real sample so the number is exact.
 - **Small install.** The Windows installer ships one FFmpeg and one FFprobe, nothing else. The link downloader (yt-dlp) is fetched on first use, not bundled.
@@ -30,7 +30,7 @@ Three ways in, all of which also work when nothing is loaded yet:
 - **Import** with the `+` button or **Ctrl+I**. Multi-select works.
 - **Paste a link.** The box accepts anything [yt-dlp](https://github.com/yt-dlp/yt-dlp) can read. **Add** (or Enter) downloads and appends it to V1. **GIF** downloads and encodes the whole clip to a GIF you choose a location for.
 
-The media pool is a thumbnail grid: click, Ctrl-click or Shift-click to select several, then drag them to the timeline together, press Enter, or use the hover `+` on a tile. Delete removes unused assets.
+The media pool is a thumbnail grid: click, Ctrl-click or Shift-click to select several, then drag them to the timeline together, press Enter, or use the hover `+` on a tile. The hover `×`, the right-click menu or the Delete key remove an asset; if it is on the timeline you are asked first, and its clips go with it (one undo brings everything back). The badge on a tile shows how many clips use it.
 
 <br clear="right" />
 
@@ -40,20 +40,21 @@ The media pool is a thumbnail grid: click, Ctrl-click or Shift-click to select s
   <img src="resources/showcase/timeline-stack.png" alt="Timeline with V2 stacked over V1 and an audio lane" width="900" />
 </p>
 
-- **V1** is the sequence: clips play back to back, and dragging a clip moves it to a new slot. Dropping video onto V1 inserts at the nearest boundary.
-- **V2, V3…** are free tracks. Dropping video there creates a stacked clip at that time. Higher tracks draw on top. The `●` next to a track name hides it from the preview and the export.
-- **A1, A2…** hold audio clips mixed over the video's own soundtrack.
-- Drag clip edges to trim. Press **I** / **O** to trim to the playhead, **S** to split, **Delete** to remove.
-- Drag on empty space to rubber-band select across video, stacked and audio clips. Shift adds to the selection. Ctrl+A selects everything.
-- Right-click a clip for Duplicate, Move, Reset trim, Fill frame and more.
-- Click or drag on the ruler to scrub. Ctrl+wheel or pinch to zoom around the cursor; a plain wheel scrolls.
+- Every track is free-form. Drop media on any row at any time; there is always one spare video track above and one spare audio track below. Gaps render black and silent.
+- **Video tracks** composite upward: V2 draws over V1, V3 over V2. A clip dropped on V2+ arrives as picture-in-picture; **Fill frame** makes it full size. The `●` next to a track name hides it from the preview and export.
+- **Audio tracks** mix together with the sound of the video clips themselves. `♫` mutes a whole track; clips can be muted individually.
+- Drag a clip sideways to move it in time, or up and down to change track. It snaps to other clips' edges and the playhead (hold Alt to bypass). Selected groups move together.
+- Drag clip edges to trim. Trimming the start keeps the out point where it is. Press **I** / **O** to trim the selected clip (or the V1 clip under the playhead) to the playhead, **S** to split everything under the playhead, **Delete** to remove.
+- Drag on empty space to rubber-band select across any tracks. Shift adds to the selection. Ctrl+A selects everything. Arrow keys nudge the selection a frame (Shift: ten); ↑/↓ move it a track.
+- Right-click a clip for Duplicate, Reset trim, Fill frame / Picture-in-picture, Mute and Remove.
+- Click or drag on the ruler to scrub. Ctrl+wheel or pinch to zoom around the cursor; a plain wheel scrolls. Drag the top edge of the timeline to resize it.
 
-### Stacked clips (picture-in-picture)
+### Inspector
 
-Select a stacked clip and the inspector shows its **Transform**: size, X/Y, opacity, plus **Fill frame** and **Reset**. You can also drag the clip directly in the preview and resize it from the bottom-right handle. Stacked clips are picture-only — drop the same file onto an audio lane if you want its sound too.
+The right-hand panel holds only controls. Select a video clip and **Transform** appears: size, X/Y, opacity, volume, plus **Fill frame** and **Picture-in-picture**. You can also drag the clip in the preview and resize it from the bottom-right handle. Below that: **Crop**, **Compression** and **Deliver**.
 
 <p align="center">
-  <img src="resources/showcase/inspector.png" alt="Inspector showing a stacked clip's transform controls" width="320" />
+  <img src="resources/showcase/inspector.png" alt="Inspector showing a clip's transform controls" width="320" />
 </p>
 
 ### Deliver
@@ -89,13 +90,16 @@ Four dark and four light themes, chosen from the header.
 | S | Split at the playhead |
 | Delete / Backspace | Remove selected clips |
 | Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y | Undo / redo |
+| Ctrl+D | Duplicate the selection after itself |
+| ← / → (Shift: ×10) | Nudge the selection a frame, or step the playhead when nothing is selected |
+| ↑ / ↓ | Move the selection up / down a track |
+| Home / End | Jump to the start / end |
 | Ctrl+A | Select everything on the timeline |
 | Ctrl+I | Import media |
 | Ctrl+V | Paste a video link (when not typing in a field) |
 | = / − / \ | Zoom in / out / fit |
 | Ctrl+wheel, pinch | Zoom around the cursor |
-| Esc | Clear selection, cancel a trim or close a menu |
-| ← / → on a trim handle | Nudge one frame (Shift: ten) |
+| Esc | Clear selection, cancel a drag or close a menu |
 
 ## Installation
 
@@ -145,27 +149,27 @@ DAXIL/
 │   ├── index.ts          Electron entry, window creation, safe-file:// range-capable protocol
 │   ├── ipc.ts            IPC: dialogs, metadata, thumbnails, export, measure, settings, downloads
 │   ├── preload.ts        contextBridge API (window.electronAPI)
-│   ├── ffmpeg.ts         Export graph: trim/concat sequence, audio mix, overlays, crop, speed, GIF palette
-│   ├── ffmpegGraph.ts    Pure builder for the stacked-video overlay chain (unit tested)
+│   ├── ffmpeg.ts         Export: timeline graph, then crop, speed, GIF palette / MP3 / MP4 encode
+│   ├── ffmpegGraph.ts    Pure builder: every video track composited over black, every sounding clip mixed (unit tested)
 │   ├── ffprobe.ts        Source metadata
 │   ├── downloader.ts     yt-dlp acquisition, updates and link downloads with progress
 │   ├── downloaderCore.ts URL validation, argv construction, progress and error parsing
 │   ├── binaries.ts       Bundled / user-overridden FFmpeg and FFprobe resolution
 │   └── output.ts         Output path validation
 ├── renderer/src/
-│   ├── App.tsx           Project state: clips, stacked clips, audio, history, import and link flows
+│   ├── App.tsx           Project state: clips on free tracks, media, history, import and link flows
 │   ├── app.css           Theme variables and the editor shell styles
 │   ├── components/
-│   │   ├── Editor.tsx    The editing surface: preview + PiP layers, transport, ruler, tracks, zoom, marquee
-│   │   ├── Lanes.tsx     Free-positioned lanes for stacked video and audio clips
+│   │   ├── Editor.tsx    The editing surface: layered preview, playback clock, ruler, drag/trim/snap, zoom, marquee
+│   │   ├── Tracks.tsx    Rows of free-positioned clips for video and audio tracks
 │   │   ├── MediaPool.tsx Thumbnail grid with multi-select and drag
 │   │   ├── LinkBox.tsx   Paste-a-link entry with progress
-│   │   ├── Inspector.tsx Clip details and transform, crop, compression, deliver
+│   │   ├── Inspector.tsx Transform, crop, compression, deliver
 │   │   ├── ExportPanel.tsx, CropPanel.tsx, CompressionPresets.tsx, ProgressPanel.tsx, ResultPanel.tsx
 │   │   └── SettingsModal.tsx
 │   └── lib/
-│       ├── clips.ts      Sequence editing helpers (trim, split, move, select)
-│       └── timeline.ts   Zoom anchoring, ruler steps, multi-asset insertion, drag payloads
+│       ├── edit.ts       Timeline model helpers: trim, split, move, snap, select, insert, remove
+│       └── timeline.ts   Zoom anchoring, ruler steps, drag payloads
 ├── shared/               Types and the export size plan shared by both processes
 ├── scripts/              Icon generation and README screenshot capture
 └── tests/                Node unit tests, Electron UI test, packaged smoke test
@@ -173,7 +177,8 @@ DAXIL/
 
 ## Implementation notes
 
-- Export builds one FFmpeg filter graph: each V1 clip is trimmed, normalised to the primary frame size and concatenated; stacked clips are scaled and composited with `overlay` in track order (with `colorchannelmixer` for opacity); audio lanes are delayed and mixed over the sequence; crop, speed and GIF palette generation apply to the composite. Measure and export share this graph, so "Check size" is exact.
+- Export builds one FFmpeg filter graph: a black canvas the length of the timeline, every video clip trimmed and composited with `overlay` in track order (full-frame clips letterboxed, others scaled, `colorchannelmixer` for opacity, `enable` for its time range), and every sounding clip delayed and mixed over silence. Crop, speed and GIF palette generation apply to the composite. Measure and export share this graph, so "Check size" is exact.
+- Playback is driven by a single clock; each visible clip is its own `<video>` layer kept within a fraction of a second of that clock, so stacked clips and gaps preview exactly as they export.
 - Compression percentages are bitrate targets derived from the source size, subject to the encoder's 200 kb/s video floor. CRF and GIF outputs have content-dependent sizes.
 - Local preview streams through a custom `safe-file://` protocol with HTTP range support so seeking works on large files and paths with spaces or `%` characters.
 - Zoom keeps an anchor time fixed on screen by correcting the scroll position in a layout effect after the new width has been committed.

@@ -1,10 +1,10 @@
 // Exercise real React pointer handling in an isolated Electron window.
-const { app, BrowserWindow, ipcMain, protocol, net } = require('electron')
+const { app, BrowserWindow, ipcMain, protocol } = require('electron')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
-const { pathToFileURL } = require('node:url')
+const { Readable } = require('node:stream')
 const { spawnSync } = require('node:child_process')
 
 const root = path.resolve(__dirname, '..')
@@ -16,27 +16,37 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'safe-file', privileges: { secur
 app.whenReady().then(async () => {
   let window
   try {
+    const ffmpeg = require('ffmpeg-static')
     const source = path.join(work, 'source video.mp4')
-    const generated = spawnSync(require('ffmpeg-static'), ['-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=30:duration=8', '-c:v', 'libx264', source], { encoding: 'utf8' })
+    const generated = spawnSync(ffmpeg, ['-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=30:duration=8', '-c:v', 'libx264', source], { encoding: 'utf8' })
     assert.equal(generated.status, 0, generated.stderr)
-    const thumbnail = spawnSync(require('ffmpeg-static'), ['-v', 'error', '-i', source, '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'mjpeg', '-']).stdout
+    const thumbnail = spawnSync(ffmpeg, ['-v', 'error', '-i', source, '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'mjpeg', '-']).stdout
     const audioSource = path.join(work, 'music track.wav')
     const secondSource = path.join(work, 'second video.mp4')
-    assert.equal(spawnSync(require('ffmpeg-static'), ['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=8', audioSource]).status, 0)
-    assert.equal(spawnSync(require('ffmpeg-static'), ['-y', '-f', 'lavfi', '-i', 'color=c=blue:s=160x90:r=30:d=2', '-c:v', 'libx264', secondSource]).status, 0)
+    assert.equal(spawnSync(ffmpeg, ['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=8', audioSource]).status, 0)
+    assert.equal(spawnSync(ffmpeg, ['-y', '-f', 'lavfi', '-i', 'color=c=blue:s=160x90:r=30:d=2', '-c:v', 'libx264', secondSource]).status, 0)
     let exported
-    ipcMain.handle('dialog:open-file', () => source)
     let imports = 0
+    ipcMain.handle('dialog:open-file', () => source)
     ipcMain.handle('dialog:open-media', () => ++imports === 1 ? [source] : [audioSource, secondSource])
     ipcMain.handle('download:start', () => ({ filePath: secondSource, title: 'second video' }))
     ipcMain.handle('download:cancel', () => {})
     ipcMain.handle('ffmpeg:measure', () => 123456)
-    ipcMain.handle('settings:get', () => ({ defaultOutputDir: work, ffmpegPath: 'auto', ffprobePath: 'auto' }))
+    ipcMain.handle('settings:get', () => ({ defaultOutputDir: work, ffmpegPath: 'auto', ffprobePath: 'auto', ytDlpPath: 'auto', downloadDir: work }))
     ipcMain.handle('ffprobe:metadata', (_, file = source) => ({ filePath: file, fileName: path.basename(file), durationSeconds: file === secondSource ? 2 : 8, width: file === audioSource ? 0 : 320, height: file === audioSource ? 0 : 180, format: 'mp4', videoCodec: 'h264', audioCodec: file === audioSource ? 'pcm_s16le' : 'none', videoBitrate: 100000, audioBitrate: 0, totalBitrate: 100000, fileSizeBytes: fs.statSync(source).size, fps: 30 }))
-    ipcMain.handle('ffmpeg:thumbnails', () => Array(16).fill('data:image/jpeg;base64,' + thumbnail.toString('base64')))
+    ipcMain.handle('ffmpeg:thumbnails', () => ['data:image/jpeg;base64,' + thumbnail.toString('base64')])
     ipcMain.handle('dialog:save-export', () => path.join(work, 'edited.mp4'))
     ipcMain.handle('ffmpeg:run', (event, options) => { exported = options; event.sender.send('ffmpeg:progress', { type: 'complete', outputPath: options.outputPath, outputSizeBytes: 123456 }) })
-    protocol.handle('safe-file', request => net.fetch(pathToFileURL(new URL(request.url).searchParams.get('path')).href))
+    protocol.handle('safe-file', request => {
+      const file = new URL(request.url).searchParams.get('path')
+      const size = fs.statSync(file).size
+      const range = /bytes=(\d*)-(\d*)/.exec(request.headers.get('range') || '')
+      const start = range && range[1] ? Number(range[1]) : 0
+      const end = range && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1
+      const headers = { 'Content-Type': file.endsWith('.wav') ? 'audio/wav' : 'video/mp4', 'Accept-Ranges': 'bytes', 'Content-Length': String(end - start + 1) }
+      if (range) headers['Content-Range'] = `bytes ${start}-${end}/${size}`
+      return new Response(Readable.toWeb(fs.createReadStream(file, { start, end })), { status: range ? 206 : 200, headers })
+    })
     window = new BrowserWindow({ width: 1280, height: 820, show: false, webPreferences: { preload: path.join(root, 'out/preload/preload.js'), sandbox: false, backgroundThrottling: false, offscreen: true } })
     const contents = window.webContents
     const bounded = (promise, label) => Promise.race([promise, new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error(`Timed out: ${label}`)), 8000); timer.unref() })])
@@ -48,245 +58,193 @@ app.whenReady().then(async () => {
       throw new Error(message)
     }
     const click = selector => js(`document.querySelector(${JSON.stringify(selector)}).click()`)
-    const resetTrim = async () => { await click('[aria-label="Clip actions"]'); await click('[aria-label="Reset trim"]') }
-    const frames = () => js('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))')
-    const ranges = () => js(`Array.from(document.querySelectorAll('.timeline-clip'), clip => [Number(clip.dataset.sourceIn), Number(clip.dataset.sourceOut)])`)
+    const count = selector => js(`document.querySelectorAll(${JSON.stringify(selector)}).length`)
+    const clipsOn = selector => js(`Array.from(document.querySelectorAll(${JSON.stringify(selector)}), clip => ({ in: Number(clip.dataset.in), out: Number(clip.dataset.out), start: Number(clip.dataset.start), track: Number(clip.dataset.track) })).sort((a, b) => a.track - b.track || a.start - b.start)`)
+    const ranges = async () => (await clipsOn('.clip-video')).map(clip => [clip.in, clip.out])
     const rect = selector => js(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x:r.x, y:r.y, width:r.width, height:r.height } })()`)
     const input = (type, x, y, buttons = 0) => bounded(contents.debugger.sendCommand('Input.dispatchMouseEvent', { type, x, y, button: type === 'mouseMoved' ? 'none' : 'left', buttons, clickCount: type === 'mouseMoved' ? 0 : 1 }), type)
-    const drag = async (selector, dx) => {
+    const dragXY = async (selector, dx, dy, from = 'center') => {
       const box = await rect(selector)
-      const x = box.x + box.width / 2, y = box.y + box.height / 2
+      const x = from === 'center' ? box.x + box.width / 2 : box.x + box.width * from, y = box.y + box.height / 2
       await input('mouseMoved', x, y)
       await input('mousePressed', x, y, 1)
-      for (let step = 1; step <= 8; step++) { await input('mouseMoved', x + dx * step / 8, y, 1); await pause(16) }
-      await input('mouseReleased', x + dx, y)
-      await waitFor(() => js('!document.querySelector(".trim-timecode")'), 'Trim gesture did not finish')
+      for (let step = 1; step <= 8; step++) { await input('mouseMoved', x + dx * step / 8, y + dy * step / 8, 1); await pause(16) }
+      await input('mouseReleased', x + dx, y + dy)
+      await pause(40)
     }
+    const drag = (selector, dx) => dragXY(selector, dx, 0)
+    const clickAt = async (x, y) => { await input('mousePressed', x, y, 1); await input('mouseReleased', x, y) }
+    const seekTo = async fraction => { const r = await rect('.timeline-ruler'); await clickAt(r.x + r.width * fraction, r.y + 8) }
+    const frames = () => js('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))')
+    // The timeline re-fits whenever its length changes, so measure the scale live.
+    const timelineEnd = () => js(`Math.max(1, ...Array.from(document.querySelectorAll('.clip'), c => Number(c.dataset.start) + Number(c.dataset.out) - Number(c.dataset.in)))`)
+    const pps = async () => (await rect('.timeline-content')).width / await timelineEnd()
+    const poolDrop = async (index, selector, fraction = 0.02) => {
+      await js(`document.querySelectorAll('.media-asset')[${index}].dispatchEvent(new MouseEvent('click', { bubbles:true }))`)
+      await js(`window.dragData = new DataTransfer(); document.querySelectorAll('.media-asset')[${index}].dispatchEvent(new DragEvent('dragstart', { bubbles:true, dataTransfer:window.dragData }))`)
+      await js(`(() => { const lane = document.querySelector(${JSON.stringify(selector)}); const r = lane.getBoundingClientRect(); const x = r.left + r.width * ${fraction}; lane.dispatchEvent(new DragEvent('dragover', { bubbles:true, cancelable:true, dataTransfer:window.dragData, clientX:x, clientY:r.top + 8 })); lane.dispatchEvent(new DragEvent('drop', { bubbles:true, cancelable:true, dataTransfer:window.dragData, clientX:x, clientY:r.top + 8 })) })()`)
+    }
+    const setInput = (selector, value) => js(`(() => { const input = document.querySelector(${JSON.stringify(selector)}); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(value)}); input.dispatchEvent(new Event('input', { bubbles: true })) })()`)
+
     if (process.env.DAXIL_TEST_URL) await window.loadURL(process.env.DAXIL_TEST_URL)
     else await window.loadFile(path.join(root, 'out/renderer/index.html'))
     contents.debugger.attach('1.3')
+    await js('window.confirm = () => true; true')
+
+    // Import → the first video becomes the project and lands on V1.
     await click('[aria-label="Import media"]')
     await waitFor(async () => (await ranges()).length === 1, 'Video did not load')
-    await waitFor(() => js('document.querySelector("video").readyState >= 2'), 'Video preview did not load')
-    const initial = await rect('.timeline-clip')
-    const pixelsPerSecond = initial.width / 8
-    await drag('[aria-label="Trim clip 1 end"]', -2 * pixelsPerSecond)
+    await waitFor(() => js('document.querySelector(".layer video") && document.querySelector(".layer video").readyState >= 2'), 'Video preview did not load')
+    assert.equal(await count('.track-video'), 2, 'V1 plus one spare video track')
+    assert.equal(await count('.track-audio'), 1, 'one spare audio track')
+    const pixelsPerSecond = (await rect('.clip-video')).width / 8
+
+    // Trim from the end, undo, redo, then trim from the start (the out point stays put).
+    await drag('.clip-video .clip-trim.end', -2 * pixelsPerSecond)
     assert.ok(Math.abs((await ranges())[0][1] - 6) < 0.05, `right trim should remove two seconds: ${JSON.stringify(await ranges())}`)
     await click('[aria-label="Undo edit"]')
     assert.deepEqual(await ranges(), [[0, 8]], 'one undo should restore the whole drag')
     await click('[aria-label="Redo edit"]')
-    await drag('[aria-label="Trim clip 1 start"]', pixelsPerSecond)
-    assert.deepEqual(await ranges(), [[1, 6]], 'left trim should preserve the right boundary')
-    const clipBox = await rect('.timeline-clip')
-    await input('mousePressed', clipBox.x + clipBox.width / 2, clipBox.y + 30, 1)
-    await input('mouseReleased', clipBox.x + clipBox.width / 2, clipBox.y + 30)
+    await drag('.clip-video .clip-trim.start', await pps())
+    const trimmed = (await clipsOn('.clip-video'))[0]
+    assert.ok(Math.abs(trimmed.in - 1) < 0.05 && Math.abs(trimmed.out - 6) < 0.05, `left trim keeps the out point: ${JSON.stringify(trimmed)}`)
+    assert.ok(Math.abs(trimmed.start - 1) < 0.05, 'the clip stays where it was on the timeline (its start edge moved right)')
+
+    // Split under the playhead.
+    const clipBox = await rect('.clip-video')
+    await clickAt(clipBox.x + clipBox.width / 2, clipBox.y + clipBox.height / 2)
+    await seekTo((trimmed.start + 2.5) / await timelineEnd())
     await click('[aria-label="Split"]')
-    await waitFor(async () => (await ranges()).length === 2, 'Split did not preserve the trimmed clip')
-    const split = await ranges()
-    assert.equal(split[0][0], 1)
-    assert.equal(split[1][1], 6)
-    assert.ok(Math.abs(split[0][1] - split[1][0]) < 0.001)
-    await drag('[aria-label="Trim clip 2 end"]', -0.5 * pixelsPerSecond)
-    assert.deepEqual((await ranges())[0], split[0], 'trimming a split must leave its neighbor alone')
-    assert.ok(Math.abs((await ranges())[1][1] - 5.5) < 0.05)
+    await waitFor(async () => (await ranges()).length === 2, 'Split did not create two clips')
+    const split = await clipsOn('.clip-video')
+    assert.ok(Math.abs(split[0].out - split[1].in) < 0.001 && Math.abs(split[1].start - (split[0].start + split[0].out - split[0].in)) < 0.001, `split keeps continuity: ${JSON.stringify(split)}`)
+
+    // Drag the second clip up onto V2: it becomes a stacked layer in the preview.
+    const secondBox = (await js(`Array.from(document.querySelectorAll('.clip-video'), c => { const r = c.getBoundingClientRect(); return { x:r.x, y:r.y, width:r.width, height:r.height, start:Number(c.dataset.start) } }).sort((a,b) => a.start - b.start)`))[1]
+    const v2 = await rect('.track-video[data-track="1"]')
+    await input('mouseMoved', secondBox.x + secondBox.width / 2, secondBox.y + secondBox.height / 2)
+    await input('mousePressed', secondBox.x + secondBox.width / 2, secondBox.y + secondBox.height / 2, 1)
+    for (let step = 1; step <= 8; step++) { await input('mouseMoved', secondBox.x + secondBox.width / 2 + 30 * step / 8, secondBox.y + secondBox.height / 2 + (v2.y + v2.height / 2 - secondBox.y - secondBox.height / 2) * step / 8, 1); await pause(16) }
+    await input('mouseReleased', secondBox.x + secondBox.width / 2 + 30, v2.y + v2.height / 2)
+    await waitFor(async () => (await count('.track-video[data-track="1"] .clip-video')) === 1, 'clip did not move to V2')
+    assert.equal(await count('.track-video'), 3, 'V3 appears as the new spare track')
+    const stacked = (await clipsOn('.clip-video')).find(clip => clip.track === 1)
+    assert.ok(stacked.start > split[1].start + 0.1, 'the clip also moved later in time while changing track')
+    await seekTo((stacked.start + 0.5) / await timelineEnd())
+    await waitFor(async () => (await count('.layer')) === 2, 'both layers render in the preview')
     await click('[aria-label="Undo edit"]')
-    assert.deepEqual(await ranges(), split, 'undo restores only the second clip trim')
-    await click('[aria-label="Clip actions"]')
-    await js(`Array.from(document.querySelectorAll('[role="menuitem"]')).find(button => button.textContent === 'Move left').click()`)
-    assert.deepEqual(await ranges(), [split[1], split[0]])
-    await drag('[aria-label="Trim clip 1 end"]', -0.5 * pixelsPerSecond)
-    assert.deepEqual((await ranges())[1], split[0])
-    await click('[aria-label="Zoom in"]')
-    await js('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))')
-    const viewport = await rect('.timeline-viewport')
-    await js('document.querySelector(".timeline-viewport").scrollLeft = 30')
-    const beforeZoomTrim = await ranges()
-    await drag('[aria-label="Trim clip 1 end"]', -0.25 * pixelsPerSecond * 1.25)
-    assert.ok(Math.abs((await ranges())[0][1] - (beforeZoomTrim[0][1] - 0.25)) < 0.05, `trimming should account for zoom and scrolling: ${JSON.stringify(beforeZoomTrim)} -> ${JSON.stringify(await ranges())}`)
-    // Ctrl+wheel zoom must keep the frame under the cursor fixed, across a burst of events.
-    const fraction = x => js(`(() => { const r = document.querySelector('.timeline-strip').getBoundingClientRect(); return (${x} - r.left) / r.width })()`)
+    assert.equal(await count('.track-video[data-track="1"] .clip-video'), 0, 'undo puts it back on V1')
+    await click('[aria-label="Redo edit"]')
+
+    // Snapping: drag the V2 clip back near the end of the V1 clip and it snaps exactly.
+    const v1Clip = (await clipsOn('.clip-video')).find(clip => clip.track === 0)
+    const v1End = v1Clip.start + v1Clip.out - v1Clip.in
+    const stackedBox = await rect('.track-video[data-track="1"] .clip-video')
+    const offset = (v1End - stacked.start) * await pps() + 5
+    await drag('.track-video[data-track="1"] .clip-video', offset)
+    const snapped = (await clipsOn('.clip-video')).find(clip => clip.track === 1)
+    assert.ok(Math.abs(snapped.start - v1End) < 0.001, `clip start snaps to the neighbour's end: ${snapped.start} vs ${v1End}`)
+    void stackedBox
+
+    // Ctrl+wheel zoom keeps the frame under the cursor fixed.
+    const fraction = x => js(`(() => { const r = document.querySelector('.timeline-content').getBoundingClientRect(); return (${x} - r.left) / r.width })()`)
     const zoomView = await rect('.timeline-viewport')
-    for (const at of [0.7, 0.2]) {
-      const ax = zoomView.x + zoomView.width * at, ay = zoomView.y + 50
-      const before = await fraction(ax)
-      for (let i = 0; i < 6; i++) await bounded(contents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseWheel', x: ax, y: ay, deltaX: 0, deltaY: -120, modifiers: 2 }), 'wheel')
-      await frames()
-      const after = await fraction(ax)
-      assert.ok(Math.abs(after - before) < 0.003, `wheel zoom drifted at ${at}: ${before} -> ${after}`)
-    }
-    assert.ok(Number.parseFloat(await js('document.querySelector(".timeline-zoom").textContent')) > 3, 'wheel zoomed in')
-    const zoomedAnchor = zoomView.x + zoomView.width * 0.5
-    const beforeOut = await fraction(zoomedAnchor)
-    await bounded(contents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseWheel', x: zoomedAnchor, y: zoomView.y + 50, deltaX: 0, deltaY: 240, modifiers: 2 }), 'wheel out')
+    const ax = zoomView.x + zoomView.width * 0.6, ay = zoomView.y + 40
+    const before = await fraction(ax)
+    for (let i = 0; i < 5; i++) await bounded(contents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseWheel', x: ax, y: ay, deltaX: 0, deltaY: -120, modifiers: 2 }), 'wheel')
     await frames()
-    assert.ok(Math.abs(await fraction(zoomedAnchor) - beforeOut) < 0.003, 'zooming out keeps the anchor too')
-    assert.ok(await js('document.querySelectorAll(".timeline-tick").length') > 1, 'ruler shows ticks')
+    assert.ok(Math.abs(await fraction(ax) - before) < 0.003, 'wheel zoom drifted')
+    assert.ok(await count('.timeline-tick') > 1, 'ruler shows ticks')
     await click('.timeline-zoom')
     await frames()
-    const finalRanges = await ranges()
-    await resetTrim()
-    assert.deepEqual((await ranges())[0], [0, 8], 'reset restores source boundaries without removing other clips')
-    assert.deepEqual((await ranges())[1], finalRanges[1])
-    await click('[aria-label="Undo edit"]')
-    assert.deepEqual(await ranges(), finalRanges)
-    await waitFor(() => js('!document.querySelector("video").seeking'), 'Preview did not settle before cancel test')
-    const beforeCancelTime = await js('document.querySelector("video").currentTime')
-    const cancelHandle = await rect('[aria-label="Trim clip 1 end"]')
-    const cancelX = cancelHandle.x + cancelHandle.width / 2, cancelY = cancelHandle.y + 20
-    await input('mousePressed', cancelX, cancelY, 1)
-    await input('mouseMoved', cancelX - 20, cancelY, 1)
-    await contents.debugger.sendCommand('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
-    await contents.debugger.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
-    await input('mouseReleased', cancelX - 20, cancelY)
-    assert.deepEqual(await ranges(), finalRanges, 'Escape cancels a trim without committing it')
-    await waitFor(() => js('!document.querySelector("video").seeking'), 'Preview did not settle on the retained frame')
-    const previewTime = await js('document.querySelector("video").currentTime')
-    assert.ok(Math.abs(previewTime - beforeCancelTime) < 0.05, `cancel restores the preview frame: ${beforeCancelTime} -> ${previewTime}`)
-    const markedClip = await rect('.timeline-clip')
-    await input('mousePressed', markedClip.x + markedClip.width / 2, markedClip.y + 30, 1)
-    await input('mouseReleased', markedClip.x + markedClip.width / 2, markedClip.y + 30)
-    await click('[aria-label="Set in point"]')
-    assert.ok((await ranges())[0][0] > finalRanges[0][0], 'in point trims at the playhead')
-    assert.deepEqual((await ranges())[1], finalRanges[1])
-    await click('[aria-label="Undo edit"]')
-    await input('mousePressed', markedClip.x + markedClip.width / 2, markedClip.y + 30, 1)
-    await input('mouseReleased', markedClip.x + markedClip.width / 2, markedClip.y + 30)
-    await click('[aria-label="Set out point"]')
-    assert.ok((await ranges())[0][1] < finalRanges[0][1], 'out point trims at the playhead')
-    await click('[aria-label="Undo edit"]')
-    assert.deepEqual(await ranges(), finalRanges)
-    fs.writeFileSync(path.join(root, 'out/editor-ui.png'), (await contents.capturePage()).toPNG())
-    await js(`Array.from(document.querySelectorAll('.export-panel .btn-primary')).find(button => button.textContent.includes('Export')).click()`)
-    await waitFor(() => exported, 'Export was not requested')
-    assert.deepEqual(exported.clips.map(clip => [clip.startSeconds, clip.endSeconds]), finalRanges, 'export receives exactly the trimmed sequence')
-    assert.equal(await js('getComputedStyle(document.querySelector(".timeline-viewport")).borderRadius'), '0px')
-    assert.equal(await js('document.querySelectorAll(".timeline-editor input").length'), 0, 'source fields should be hidden until requested')
-    const toolbar = await rect('.timeline-toolbar')
-    assert.ok(toolbar.height < 40, 'editing controls should stay compact')
-    assert.ok(viewport.width > 600, 'the timeline spans the window under the panels')
-    assert.equal(await js('document.querySelectorAll(".track-header").length >= 3'), true, 'track headers show V2, V1 and the ruler row')
-    // Multi-selection must survive drag-start and move as a single block.
-    await click('[aria-label="Clip actions"]')
-    await js(`Array.from(document.querySelectorAll('[role="menuitem"]')).find(button => button.textContent === 'Duplicate').click()`)
-    const beforeGroup = await ranges()
-    assert.equal(beforeGroup.length, 3)
-    await js(`document.querySelectorAll('.timeline-clip')[0].dispatchEvent(new MouseEvent('click', { bubbles: true }))`)
-    await js(`document.querySelectorAll('.timeline-clip')[1].dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }))`)
-    assert.equal(await js('document.querySelectorAll(".timeline-clip.is-selected").length'), 2)
-    const transfer = `window.dragData = new DataTransfer(); document.querySelectorAll('.timeline-clip')[0].dispatchEvent(new DragEvent('dragstart', { bubbles:true, dataTransfer:window.dragData }))`
-    await js(transfer)
-    await js(`(() => { const lane = document.querySelector('.timeline-viewport'); const r = lane.getBoundingClientRect(); lane.dispatchEvent(new DragEvent('dragover', { bubbles:true, cancelable:true, dataTransfer:window.dragData, clientX:r.right - 10, clientY:r.top + 25 })); lane.dispatchEvent(new DragEvent('drop', { bubbles:true, cancelable:true, dataTransfer:window.dragData, clientX:r.right - 10, clientY:r.top + 25 })); })()`)
-    assert.deepEqual(await ranges(), [beforeGroup[2], beforeGroup[0], beforeGroup[1]], 'dropping into empty lane space moves the whole group to the end')
-    assert.equal(await js('document.querySelectorAll(".timeline-clip.is-selected").length'), 2)
-    await click('[aria-label="Undo edit"]')
-    assert.deepEqual(await ranges(), beforeGroup)
-    await js(`document.querySelectorAll('.timeline-clip')[0].dispatchEvent(new MouseEvent('click', { bubbles:true }))`)
-    await js(`document.querySelectorAll('.timeline-clip')[2].dispatchEvent(new MouseEvent('click', { bubbles:true, shiftKey:true }))`)
-    assert.equal(await js('document.querySelectorAll(".timeline-clip.is-selected").length'), 3)
+
+    // Marquee across both video tracks, delete, undo.
+    const content = await rect('.timeline-content')
+    const v3 = await rect('.track-video[data-track="2"]')
+    const v1Row = await rect('.track-video[data-track="0"]')
+    await input('mousePressed', content.x + content.width - 8, v3.y + 4, 1)
+    for (let step = 1; step <= 6; step++) { await input('mouseMoved', content.x + content.width - 8 - (content.width - 40) * step / 6, v3.y + 4 + (v1Row.y + v1Row.height - 4 - v3.y - 4) * step / 6, 1); await pause(16) }
+    await input('mouseReleased', content.x + 32, v1Row.y + v1Row.height - 4)
+    assert.equal(await count('.clip-video.is-selected'), 2, 'marquee selects clips on both tracks')
     await click('[aria-label="Remove clip"]')
     assert.equal((await ranges()).length, 0)
     await click('[aria-label="Undo edit"]')
-    assert.equal((await ranges()).length, 3)
-    // Rubber-band from the empty end of the timeline across the last two clips.
-    const strip = await rect('.timeline-strip')
-    const clipRects = await js(`Array.from(document.querySelectorAll('.timeline-clip'), c => { const r = c.getBoundingClientRect(); return { x: r.x, width: r.width } })`)
-    const viewBox = await rect('.timeline-viewport')
-    const startX = viewBox.x + viewBox.width - 12, my = strip.y + strip.height / 2
-    await input('mousePressed', startX, my, 1)
-    for (let step = 1; step <= 6; step++) { await input('mouseMoved', startX - (startX - (clipRects[1].x + clipRects[1].width / 2)) * step / 6, my + 4, 1); await pause(16) }
-    await input('mouseReleased', clipRects[1].x + clipRects[1].width / 2, my + 4)
-    assert.deepEqual(await js(`Array.from(document.querySelectorAll('.timeline-clip'), c => c.classList.contains('is-selected'))`), [false, true, true], 'marquee selects the clips it crosses')
+    assert.equal((await ranges()).length, 2)
+
+    // Audio tracks: drop onto A1 and A2, move between them, trim, mute the track.
     await click('[aria-label="Import media"]')
     await waitFor(() => js('document.querySelectorAll(".media-asset").length === 3'), 'Media pool did not import video and audio')
-    const poolDrop = async (index, selector) => {
-      await js(`window.dragData = new DataTransfer(); document.querySelectorAll('.media-asset')[${index}].dispatchEvent(new DragEvent('dragstart', { bubbles:true, dataTransfer:window.dragData }))`)
-      await js(`(() => { const lane = document.querySelector(${JSON.stringify(selector)}); const r = lane.getBoundingClientRect(); lane.dispatchEvent(new DragEvent('drop', { bubbles:true, cancelable:true, dataTransfer:window.dragData, clientX:r.left + 5, clientY:r.top + 10 })); })()`)
-    }
-    await poolDrop(1, '.lanes-audio .lane')
-    assert.equal(await js('document.querySelectorAll(".audio-clip").length'), 1, 'audio can be dropped onto a new track')
-    assert.equal(await js('document.querySelectorAll(".timeline-drop-marker").length'), 0)
-    await poolDrop(2, '.timeline-viewport')
-    assert.equal((await ranges()).length, 4)
-    await js(`document.querySelector('.timeline-clip').dispatchEvent(new MouseEvent('click', { bubbles:true }))`)
-    await waitFor(() => js('document.querySelector("video").src.includes("second%20video") && document.querySelector("video").readyState >= 2'), 'Preview did not switch media source')
-    await resetTrim()
-    assert.equal((await ranges())[0][1], 2, 'trim reset uses the selected source duration')
-    const audioBefore = await rect('.audio-clip')
-    await drag('.audio-clip', 20)
-    assert.ok((await rect('.audio-clip')).x > audioBefore.x, 'audio can be moved on its track')
+    await poolDrop(1, '.track-audio[data-track="0"]')
+    assert.equal(await count('.clip-audio'), 1, 'audio can be dropped onto A1')
+    assert.equal(await count('.track-audio'), 2, 'A2 appears as the spare audio track')
+    await poolDrop(1, '.track-audio[data-track="1"]', 0.3)
+    assert.equal(await count('.track-audio[data-track="1"] .clip-audio'), 1, 'a second audio clip lands on A2')
+    assert.equal(await count('.track-audio'), 3)
+    const a1 = await rect('.track-audio[data-track="0"]')
+    const a2Clip = await rect('.track-audio[data-track="1"] .clip-audio')
+    await dragXY('.track-audio[data-track="1"] .clip-audio', 0, a1.y + a1.height / 2 - (a2Clip.y + a2Clip.height / 2))
+    assert.equal(await count('.track-audio[data-track="0"] .clip-audio'), 2, 'audio clips can move between tracks')
     await click('[aria-label="Undo edit"]')
-    assert.ok(Math.abs((await rect('.audio-clip')).x - audioBefore.x) < 1)
-    const audioWidth = (await rect('.audio-clip')).width
-    await drag('.audio-clip .lane-trim.end', -15)
-    assert.ok((await rect('.audio-clip')).width < audioWidth - 5, 'audio edges can be trimmed')
+    assert.equal(await count('.track-audio[data-track="1"] .clip-audio'), 1)
+    const audioBefore = (await clipsOn('.track-audio[data-track="1"] .clip-audio'))[0]
+    await drag('.track-audio[data-track="1"] .clip-audio', 40)
+    assert.ok((await clipsOn('.track-audio[data-track="1"] .clip-audio'))[0].start > audioBefore.start, 'audio can be moved on its track')
+    await drag('.track-audio[data-track="1"] .clip-audio .clip-trim.end', -40)
+    assert.ok((await clipsOn('.track-audio[data-track="1"] .clip-audio'))[0].out < audioBefore.out, 'audio edges can be trimmed')
+    await click('[aria-label="Mute track A1"]')
+    assert.equal(await count('.track-audio[data-track="0"].is-disabled'), 1)
+    await click('[aria-label="Unmute track A1"]')
+
+    // Pool delete cascades to the timeline (confirm is auto-accepted) and undoes as one step.
+    const audioClipsBefore = await count('.clip-audio')
+    const poolBefore = await count('.media-asset')
+    await js(`document.querySelectorAll('.media-asset')[1].querySelector('.media-asset-remove').click()`)
+    assert.equal(await count('.media-asset'), poolBefore - 1, 'the asset leaves the pool')
+    assert.equal(await count('.clip-audio'), 0, 'its clips leave the timeline')
     await click('[aria-label="Undo edit"]')
-    assert.ok(Math.abs((await rect('.audio-clip')).width - audioWidth) < 1)
-    await click('[aria-label="Mute audio track"]')
-    await click('[aria-label="Undo edit"]')
-    // Ctrl-select two assets in the bin and drop both at the start in one undoable edit.
-    const beforeMulti = (await ranges()).length
-    const audioCount = await js('document.querySelectorAll(".audio-clip").length')
-    await js(`document.querySelectorAll('.media-asset')[1].dispatchEvent(new MouseEvent('click', { bubbles:true }))`)
-    await js(`document.querySelectorAll('.media-asset')[2].dispatchEvent(new MouseEvent('click', { bubbles:true, ctrlKey:true }))`)
-    assert.equal(await js('document.querySelectorAll(".media-asset.is-selected").length'), 2)
-    await poolDrop(2, '.timeline-viewport')
-    assert.equal((await ranges()).length, beforeMulti + 1, 'the selected video is inserted')
-    assert.equal(await js('document.querySelectorAll(".audio-clip").length'), audioCount + 1, 'the selected audio is placed too')
-    await click('[aria-label="Undo edit"]')
-    assert.equal((await ranges()).length, beforeMulti, 'a multi-asset drop is one undo step')
-    assert.equal(await js('document.querySelectorAll(".audio-clip").length'), audioCount)
-    // Stack a video on V2: it shows as a lane clip and as a picture-in-picture layer in the preview.
-    const beforeStack = (await ranges()).length
-    await js(`document.querySelectorAll('.media-asset')[2].dispatchEvent(new MouseEvent('click', { bubbles:true }))`)
-    await poolDrop(2, '.lanes-video .lane')
-    const ruler = await rect('.timeline-ruler')
-    await input('mousePressed', ruler.x + 60, ruler.y + 8, 1)
-    await input('mouseReleased', ruler.x + 60, ruler.y + 8)
-    assert.equal((await ranges()).length, beforeStack, 'stacking leaves V1 alone')
-    assert.equal(await js('document.querySelectorAll(".video-clip").length'), 1, 'the clip lands on V2')
-    await waitFor(() => js('document.querySelectorAll(".overlay-layer").length === 1'), 'the stacked clip renders in the preview')
-    assert.equal(await js('document.querySelectorAll(".track-header").length'), 5, 'ruler, V3 (empty), V2, V1, A1')
-    const layerBefore = await rect('.overlay-layer')
-    await drag('.overlay-layer', -60)
-    const layerAfter = await rect('.overlay-layer')
-    assert.ok(layerAfter.x < layerBefore.x - 40, `dragging the layer moves it: ${layerBefore.x} -> ${layerAfter.x}`)
-    await click('[aria-label="Undo edit"]')
-    assert.ok(Math.abs((await rect('.overlay-layer')).x - layerBefore.x) < 1, 'one undo restores the position')
-    await js(`document.querySelector('.overlay-layer').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 1, clientY: 1 })); document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))`)
-    assert.ok((await js('document.querySelector(".inspector").textContent')).includes('Transform'), 'selecting a stacked clip shows its transform in the inspector')
-    await click('[aria-label="Hide track V2"]')
-    assert.equal(await js('document.querySelectorAll(".overlay-layer").length'), 0, 'hidden tracks disappear from the preview')
-    await click('[aria-label="Show track V2"]')
-    // Paste a link: the mocked download lands at the end of V1 and in the pool.
-    const poolBefore = await js('document.querySelectorAll(".media-asset").length')
+    assert.equal(await count('.media-asset'), poolBefore, 'undo restores the asset')
+    assert.equal(await count('.clip-audio'), audioClipsBefore, 'and its clips')
+
+    // Toolbar stays compact; the inspector shows only transform / crop / compression / deliver.
+    const toolbar = await rect('.timeline-toolbar')
+    assert.ok(toolbar.height < 40, 'editing controls should stay compact')
+    assert.equal(await js('document.querySelectorAll(".timeline-editor input").length'), 0)
+    const headings = await js(`Array.from(document.querySelectorAll('.inspector-heading .section-title'), h => h.textContent)`)
+    assert.ok(!headings.some(text => /^Clip$/i.test(text)), `no clip-details section: ${headings.join(', ')}`)
+    assert.ok(headings.some(text => /Deliver/.test(text)) && headings.some(text => /Crop/.test(text)))
+
+    // Export carries the free-form clips and the project frame.
+    exported = null
+    await js(`Array.from(document.querySelectorAll('.export-panel .btn-primary')).find(button => button.textContent.includes('Export')).click()`)
+    await waitFor(() => exported, 'Export was not requested')
+    assert.equal(exported.clips.length, 2 + audioClipsBefore)
+    assert.deepEqual(exported.project, { width: 320, height: 180, fps: 30 })
+    assert.ok(exported.clips.every(clip => typeof clip.track === 'number' && typeof clip.timelineStart === 'number'))
+
+    // Size check and invalidation.
+    await js(`Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Check size').click()`)
+    await waitFor(() => js('document.querySelector(".export-metric-card").textContent.includes("Measured output")'), 'Measured size was not displayed')
+    await js(`document.querySelector('.speed-select').value = '2'; document.querySelector('.speed-select').dispatchEvent(new Event('change', { bubbles:true }))`)
+    assert.ok(!(await js('document.querySelector(".export-metric-card").textContent')).includes('Measured output'), 'changing settings invalidates a measured size')
+
+    // Paste a link: the mocked download lands at the end of V1 and in the pool; GIF goes straight to export.
     const beforeLink = (await ranges()).length
-    await js(`(() => { const input = document.querySelector('.link-box-input'); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(input, 'https://x.com/someone/status/1'); input.dispatchEvent(new Event('input', { bubbles: true })) })()`)
+    const endBefore = await timelineEnd()
+    await setInput('.link-box-input', 'https://x.com/someone/status/1')
     await click('.link-box-add')
     await waitFor(async () => (await ranges()).length === beforeLink + 1, 'the downloaded video was not added to the timeline')
-    assert.equal(await js('document.querySelectorAll(".media-asset").length'), poolBefore, 'an already-imported file is reused rather than duplicated')
-    // Link → GIF encodes the whole download without touching the timeline.
+    const linkClip = (await clipsOn('.clip-video')).find(clip => clip.track === 0 && Math.abs(clip.start - endBefore) < 0.01)
+    assert.ok(linkClip, 'the link lands at the end of V1')
     exported = null
-    await js(`(() => { const input = document.querySelector('.link-box-input'); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(input, 'https://youtu.be/abc'); input.dispatchEvent(new Event('input', { bubbles: true })) })()`)
+    await setInput('.link-box-input', 'https://youtu.be/abc')
     await click('.link-box-gif')
     await waitFor(() => exported, 'Quick GIF export was not requested')
     assert.equal(exported.mode, 'gif')
     assert.deepEqual(exported.clips.map(clip => [clip.startSeconds, clip.endSeconds]), [[0, 2]], 'the whole downloaded clip becomes the GIF')
     assert.equal((await ranges()).length, beforeLink + 1, 'quick GIF does not touch the timeline')
-    await click('[aria-label="Undo edit"]')
-    assert.equal((await ranges()).length, beforeLink)
-    await js(`Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Check size').click()`)
-    await waitFor(() => js('document.querySelector(".export-metric-card").textContent.includes("Measured output")'), 'Measured size was not displayed')
-    await js(`document.querySelector('.speed-select').value = '2'; document.querySelector('.speed-select').dispatchEvent(new Event('change', { bubbles:true }))`)
-    assert.ok(!(await js('document.querySelector(".export-metric-card").textContent')).includes('Measured output'), 'changing settings invalidates a measured size')
-    exported = null
-    await js(`Array.from(document.querySelectorAll('.export-panel .btn-primary')).find(button => button.textContent.includes('Export')).click()`)
-    await waitFor(() => exported, 'Mixed media export was not requested')
-    assert.equal(exported.media.length, 3)
-    assert.equal(exported.audioClips.length, 1)
-    assert.equal(exported.overlays.length, 1, 'stacked clips are exported')
-    assert.equal(exported.clips.length, 4)
+
     fs.writeFileSync(path.join(root, 'out/editor-ui.png'), (await contents.capturePage()).toPNG())
-    console.log('UI PASS: drag trim, undo/redo, split, reorder, zoom/scroll, anchored wheel zoom, marquee, multi-asset drop, stacked video, link import, quick GIF, export ranges, compact square timeline, multi-select/group drag, media pool, audio editing, mixed-source preview, size check')
+    console.log('UI PASS: trim/undo/redo, split, cross-track drag, snapping, anchored zoom, marquee, audio tracks, pool delete cascade, slim inspector, export shape, size check, link import, quick GIF')
     window.destroy()
     app.exit(0)
   } catch (error) {

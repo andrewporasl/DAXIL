@@ -20,7 +20,8 @@ export interface TrimRange {
   endSeconds: number
 }
 
-export interface TimelineClip {
+// Legacy single-file export range (used only when there are no clips).
+export interface LegacyClip {
   id: string
   mediaId?: string
   startSeconds: number
@@ -34,22 +35,28 @@ export interface MediaAsset {
   thumbnail?: string
 }
 
-export interface AudioClip extends TimelineClip {
+// Every clip on the timeline, video or audio, sits freely on a numbered track.
+// Video transform values are fractions of the project frame (full frame = 0, 0, 1).
+export interface Clip {
+  id: string
   mediaId: string
-  timelineStart: number
-  volume: number
-}
-
-// A video clip on V2 and above. Position and size are fractions of the frame;
-// `scale` is the overlay width divided by the frame width.
-export interface OverlayClip extends TimelineClip {
-  mediaId: string
-  timelineStart: number
+  kind: 'video' | 'audio'
   track: number
+  timelineStart: number
+  startSeconds: number
+  endSeconds: number
   x: number
   y: number
   scale: number
   opacity: number
+  volume: number
+  muted: boolean
+}
+
+export interface Project {
+  width: number
+  height: number
+  fps: number
 }
 
 export interface CropSelection {
@@ -72,11 +79,11 @@ export interface ExportOptions {
   outputDir: string
   outputFileName: string
   outputPath?: string
-  clips?: TimelineClip[]
+  clips?: Clip[]
   media?: MediaAsset[]
-  audioClips?: AudioClip[]
-  overlays?: OverlayClip[]
-  hiddenTracks?: number[]
+  project?: Project
+  hiddenVideoTracks?: number[]
+  mutedAudioTracks?: number[]
   hasAudio?: boolean
   trim: TrimRange
   crop: CropSelection

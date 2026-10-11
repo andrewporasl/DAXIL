@@ -4,7 +4,8 @@ import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
 import type { CropSelection, ExportOptions, FFmpegEvent } from '../shared/types'
-import { buildOverlayFilters } from './ffmpegGraph.ts'
+import { buildTimelineGraph } from './ffmpegGraph.ts'
+import { timelineSpan } from '../shared/exportPlan.ts'
 
 let currentProcess: ChildProcess | null = null
 
@@ -201,65 +202,24 @@ export function buildClipFFmpegArgs(
   const primary = { fileSizeBytes, durationSeconds: sourceDuration, audioCodec: options.hasAudio ? 'audio' : 'none' }
   const plan = exportPlan(options, primary)
   if (options.mode === 'audio' && !plan.audio) throw new Error('Add an audio track or choose media with audio before exporting.')
-  const duration = clips.reduce((total, clip) => total + clip.endSeconds - clip.startSeconds, 0)
   const rate = options.playbackRate ?? 1
-  const filters: string[] = []
-  const parts: string[] = []
   const args = ['-y', '-i', options.inputPath]
   const paths = [options.inputPath]
-  const inputFor = (id?: string) => {
+  const inputFor = (id: string) => {
     const asset = options.media?.find(item => item.id === id)
-    if (id && !asset) throw new Error('A timeline source is missing from the media pool.')
-    const file = asset?.metadata.filePath ?? options.inputPath
+    if (!asset) throw new Error('A timeline source is missing from the media pool.')
+    const file = asset.metadata.filePath
     let index = paths.indexOf(file)
     if (index < 0) { index = paths.length; paths.push(file); args.push('-i', file) }
-    return { index, meta: asset?.metadata ?? primary }
+    return { index, durationSeconds: asset.metadata.durationSeconds }
   }
-  const video = options.mode !== 'audio'
-  const audio = plan.audio
-  for (let index = 0; index < clips.length; index++) {
-    const clip = clips[index]
-    const input = inputFor(clip.mediaId)
-    const length = clip.endSeconds - clip.startSeconds
-    if (!Number.isFinite(length) || length < 0.1 || clip.startSeconds < 0 || clip.endSeconds > input.meta.durationSeconds + 0.01) throw new Error('A clip has an invalid source range.')
-    if (video) {
-      const normalize = videoWidth > 0 && videoHeight > 0 ? `,scale=${even(videoWidth)}:${even(videoHeight)}:force_original_aspect_ratio=decrease,pad=${even(videoWidth)}:${even(videoHeight)}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${options.media?.find(asset => asset.metadata.filePath === options.inputPath)?.metadata.fps || 30},format=yuv420p` : ''
-      filters.push(`[${input.index}:v]trim=start=${clip.startSeconds}:end=${clip.endSeconds},setpts=PTS-STARTPTS${normalize}[v${index}]`)
-      parts.push(`[v${index}]`)
-    }
-    if (audio) {
-      const source = input.meta.audioCodec !== 'none'
-        ? `[${input.index}:a]atrim=start=${clip.startSeconds}:end=${clip.endSeconds},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration=${length}`
-        : `anullsrc=r=48000:cl=stereo,atrim=duration=${length}`
-      filters.push(`${source}[a${index}]`)
-      parts.push(`[a${index}]`)
-    }
-  }
-  filters.push(`${parts.join('')}concat=n=${clips.length}:v=${video ? 1 : 0}:a=${audio ? 1 : 0}${video ? '[vcat]' : ''}${audio ? '[abase]' : ''}`)
-  if (audio) {
-    const labels = ['[abase]']
-    ;(options.audioClips ?? []).forEach((clip, index) => {
-      const input = inputFor(clip.mediaId)
-      if (!Number.isFinite(clip.timelineStart) || clip.timelineStart < 0 || !Number.isFinite(clip.volume) || clip.volume < 0 || clip.volume > 2 || clip.startSeconds < 0 || clip.endSeconds > input.meta.durationSeconds + 0.01 || clip.endSeconds - clip.startSeconds < 0.1) throw new Error('An audio clip has an invalid range or volume.')
-      filters.push(`[${input.index}:a]atrim=start=${clip.startSeconds}:end=${clip.endSeconds},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,volume=${clip.volume},adelay=${Math.round(clip.timelineStart * 1000)}:all=1[overlay${index}]`)
-      labels.push(`[overlay${index}]`)
-    })
-    filters.push(`${labels.join('')}amix=inputs=${labels.length}:duration=first:normalize=0,alimiter=limit=0.95:level=0:latency=1,atrim=duration=${duration}[acat]`)
-  }
+  const frameWidth = even(options.project?.width || videoWidth || 1280)
+  const frameHeight = even(options.project?.height || videoHeight || 720)
+  const fps = options.project?.fps || options.media?.find(asset => asset.metadata.filePath === options.inputPath)?.metadata.fps || 30
+  const graph = buildTimelineGraph(options, inputFor, frameWidth, frameHeight, fps, primary.audioCodec, options.mode !== 'audio', plan.audio)
+  const filters = [...graph.filters]
+  const composite = graph.video
   const atempo = buildAtempoChain(rate)
-
-  // Stacked video tracks composite over the sequence before crop, speed and GIF stages.
-  let composite = 'vcat'
-  if (video && options.overlays?.length) {
-    const frameWidth = even(videoWidth || 1280)
-    const frameHeight = even(videoHeight || 720)
-    const result = buildOverlayFilters(options.overlays, options.hiddenTracks ?? [], frameWidth, frameHeight, mediaId => {
-      const input = inputFor(mediaId)
-      return { index: input.index, durationSeconds: input.meta.durationSeconds, width: 0, height: 0 }
-    })
-    filters.push(...result.filters)
-    composite = result.output
-  }
 
   if (options.mode === 'audio') {
     const audioOutput = atempo ? 'aout' : 'acat'
@@ -269,7 +229,7 @@ export function buildClipFFmpegArgs(
     return args
   }
 
-  const crop = cropFilter(normalizeCrop(options.crop, videoWidth, videoHeight))
+  const crop = cropFilter(normalizeCrop(options.crop, frameWidth, frameHeight))
   if (options.mode === 'gif') {
     const gifFilters = [rate !== 1 ? `setpts=(PTS-STARTPTS)*${(1 / rate).toFixed(6)}` : null,
       `fps=${options.gifFps ?? 12}`, crop, `scale=${options.gifScale ?? 480}:-1:flags=lanczos`].filter(Boolean).join(',')
@@ -284,15 +244,15 @@ export function buildClipFFmpegArgs(
   const videoOutput = videoFilters ? 'vout' : composite
   if (videoFilters) filters.push(`[${composite}]${videoFilters}[vout]`)
   let audioOutput = 'acat'
-  if (audio && atempo) { filters.push(`[acat]${atempo}[aout]`); audioOutput = 'aout' }
+  if (plan.audio && atempo) { filters.push(`[acat]${atempo}[aout]`); audioOutput = 'aout' }
   args.push('-filter_complex', filters.join(';'), '-map', `[${videoOutput}]`)
-  if (audio) args.push('-map', `[${audioOutput}]`)
+  if (plan.audio) args.push('-map', `[${audioOutput}]`)
   else args.push('-an')
   const reduction = REDUCTION_MAP[options.compressionLevel] ?? 0
   if (reduction) {
     args.push('-c:v', 'libx264', '-preset', 'fast', '-b:v', `${plan.videoKbps}k`)
   } else args.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '18')
-  if (audio) args.push('-c:a', 'aac', '-b:a', reduction ? '128k' : '192k')
+  if (plan.audio) args.push('-c:a', 'aac', '-b:a', reduction ? '128k' : '192k')
   args.push(options.outputPath ?? path.join(options.outputDir, options.outputFileName + '.mp4'))
   return args
 }
@@ -413,7 +373,7 @@ export function runFFmpeg(
   return new Promise((resolve, reject) => {
     const hasTrim = options.trim.enabled && (options.trim.startSeconds > 0 || options.trim.endSeconds < durationSeconds - 0.1)
     const effectiveDuration = options.clips?.length
-      ? options.clips.reduce((total, clip) => total + clip.endSeconds - clip.startSeconds, 0) / (options.playbackRate ?? 1)
+      ? timelineSpan(options.clips, options.hiddenVideoTracks) / (options.playbackRate ?? 1)
       : hasTrim ? options.trim.endSeconds - options.trim.startSeconds : durationSeconds
     const args = buildFFmpegArgs(options, fileSizeBytes, durationSeconds, videoWidth, videoHeight)
     const outputPath = args[args.length - 1]
