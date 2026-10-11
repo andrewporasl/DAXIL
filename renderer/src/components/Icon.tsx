@@ -19,6 +19,9 @@ type IconName =
   | 'export'
   | 'crop'
   | 'x'
+  | 'scissors'
+  | 'trash'
+  | 'plus'
 
 interface Props {
   name: IconName
@@ -26,6 +29,9 @@ interface Props {
 }
 
 const paths: Record<IconName, React.ReactNode> = {
+  scissors: <><circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="m8.5 7.5 12 13M8.5 16.5 20.5 3.5" /></>,
+  trash: <><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></>,
+  plus: <path d="M12 5v14M5 12h14" />,
   'folder-plus': (
     <>
       <path d="M3 7.5h5l1.8 2H21v9.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />

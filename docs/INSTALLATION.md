@@ -66,3 +66,13 @@ DAXIL-<version>-linux-x64.tar.gz
 ## Runtime Dependencies
 
 Release builds bundle FFmpeg and FFprobe. End users do not need to install Node.js, FFmpeg, FFprobe, npm, or other developer tools.
+
+## Link downloads (yt-dlp)
+
+Pasting a YouTube, X or other video link uses [yt-dlp](https://github.com/yt-dlp/yt-dlp). DAXIL does not bundle it. The first time you use the link box, the current release is downloaded from GitHub into the application data folder:
+
+- Windows: `%APPDATA%\DAXIL\bin\yt-dlp.exe`
+- macOS: `~/Library/Application Support/DAXIL/bin/yt-dlp_macos`
+- Linux: `~/.config/DAXIL/bin/yt-dlp_linux`
+
+Offline machines, or anyone who prefers their own copy, can set the yt-dlp path in **Settings**. The **Update** button there runs `yt-dlp -U`. Downloaded videos go to the folder shown under **Download folder** (default: `Videos/DAXIL Downloads`).

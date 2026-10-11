@@ -11,9 +11,24 @@ export default function SettingsModal({ onClose }: Props) {
   const [settings, setSettings] = useState<AppSettings>({
     ffmpegPath: 'auto',
     ffprobePath: 'auto',
-    defaultOutputDir: ''
+    ytDlpPath: 'auto',
+    defaultOutputDir: '',
+    downloadDir: ''
   })
   const [saved, setSaved] = useState(false)
+  const [toolStatus, setToolStatus] = useState<string | null>(null)
+  const [updating, setUpdating] = useState(false)
+
+  const handleUpdateTool = async () => {
+    setUpdating(true); setToolStatus(null)
+    try { setToolStatus(await window.electronAPI.updateDownloader()) }
+    catch (error) { setToolStatus(error instanceof Error ? error.message : String(error)) }
+    finally { setUpdating(false) }
+  }
+  const handlePickDownloadFolder = async () => {
+    const dir = await window.electronAPI.openFolderDialog()
+    if (dir) setSettings((state) => ({ ...state, downloadDir: dir }))
+  }
 
   useEffect(() => {
     window.electronAPI.getSettings().then(setSettings)
@@ -98,6 +113,39 @@ export default function SettingsModal({ onClose }: Props) {
               style={{ flex: 1 }}
             />
             <button className="icon-button" onClick={handlePickFolder} aria-label="Browse default output folder" title="Browse default output folder">
+              <Icon name="folder" />
+            </button>
+          </div>
+        </div>
+
+        <div className="panel-divider" />
+
+        <div>
+          <label>yt-dlp path (link downloads)</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={settings.ytDlpPath}
+              onChange={(event) => setSettings((state) => ({ ...state, ytDlpPath: event.target.value }))}
+              placeholder="auto"
+              style={{ flex: 1 }}
+            />
+            <button className="btn-ghost" onClick={handleUpdateTool} disabled={updating} title="Fetch the newest yt-dlp release">{updating ? 'Updating…' : 'Update'}</button>
+          </div>
+          <div className="surface-note" style={{ marginTop: 6 }}>
+            {toolStatus ?? '`auto` fetches yt-dlp from GitHub the first time you paste a link and keeps it in the app data folder.'}
+          </div>
+        </div>
+
+        <div>
+          <label>Download folder</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={settings.downloadDir}
+              onChange={(event) => setSettings((state) => ({ ...state, downloadDir: event.target.value }))}
+              placeholder="Videos/DAXIL Downloads"
+              style={{ flex: 1 }}
+            />
+            <button className="icon-button" onClick={handlePickDownloadFolder} aria-label="Browse download folder" title="Browse download folder">
               <Icon name="folder" />
             </button>
           </div>

@@ -10,7 +10,8 @@ function getMimeType(filePath: string): string {
     '.avi': 'video/x-msvideo', '.mkv': 'video/x-matroska',
     '.webm': 'video/webm', '.wmv': 'video/x-ms-wmv',
     '.flv': 'video/x-flv', '.ts': 'video/mp2t',
-    '.mp3': 'audio/mpeg', '.aac': 'audio/aac', '.wav': 'audio/wav'
+    '.mp3': 'audio/mpeg', '.aac': 'audio/aac', '.wav': 'audio/wav',
+    '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.flac': 'audio/flac'
   }
   return map[ext] ?? 'application/octet-stream'
 }
@@ -55,7 +56,7 @@ app.whenReady().then(() => {
       const parsed = new URL(request.url)
       const requestedPath = parsed.searchParams.get('path')
       let filePath = requestedPath
-        ? decodeURIComponent(requestedPath)
+        ? requestedPath
         : decodeURIComponent(`${parsed.host}${parsed.pathname}`)
 
       // Electron may reinterpret absolute POSIX paths as URL hosts for custom schemes.

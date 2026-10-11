@@ -20,6 +20,38 @@ export interface TrimRange {
   endSeconds: number
 }
 
+export interface TimelineClip {
+  id: string
+  mediaId?: string
+  startSeconds: number
+  endSeconds: number
+}
+
+export interface MediaAsset {
+  id: string
+  kind: 'video' | 'audio'
+  metadata: VideoMetadata
+  thumbnail?: string
+}
+
+export interface AudioClip extends TimelineClip {
+  mediaId: string
+  timelineStart: number
+  volume: number
+}
+
+// A video clip on V2 and above. Position and size are fractions of the frame;
+// `scale` is the overlay width divided by the frame width.
+export interface OverlayClip extends TimelineClip {
+  mediaId: string
+  timelineStart: number
+  track: number
+  x: number
+  y: number
+  scale: number
+  opacity: number
+}
+
 export interface CropSelection {
   enabled: boolean
   x: number
@@ -39,6 +71,13 @@ export interface ExportOptions {
   inputPath: string
   outputDir: string
   outputFileName: string
+  outputPath?: string
+  clips?: TimelineClip[]
+  media?: MediaAsset[]
+  audioClips?: AudioClip[]
+  overlays?: OverlayClip[]
+  hiddenTracks?: number[]
+  hasAudio?: boolean
   trim: TrimRange
   crop: CropSelection
   compressionLevel: CompressionLevel
@@ -74,5 +113,18 @@ export type FFmpegEvent = ProgressEvent | CompletionEvent | ErrorEvent
 export interface AppSettings {
   ffmpegPath: string
   ffprobePath: string
+  ytDlpPath: string
   defaultOutputDir: string
+  downloadDir: string
+}
+
+export interface DownloadProgress {
+  phase: 'tool' | 'media'
+  percent: number | null
+  message: string
+}
+
+export interface DownloadResult {
+  filePath: string
+  title: string
 }

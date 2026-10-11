@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "composite": true,
+    "allowImportingTsExtensions": true,
     "target": "ES2022",
     "lib": ["ES2022"],
     "module": "CommonJS",

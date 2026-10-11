@@ -1,11 +1,11 @@
+import { exportPlan } from '../../../shared/exportPlan'
 import React from 'react'
-import type { VideoMetadata, CompressionLevel, TrimRange, CropSelection } from '@shared/types'
-import { estimateCompressedSize, estimateTrimmedSize, formatBytes } from '../lib/sizeEstimator'
+import type { VideoMetadata, CompressionLevel, ExportOptions } from '@shared/types'
+import { formatBytes } from '../lib/sizeEstimator'
 
 interface Props {
   metadata: VideoMetadata
-  trim: TrimRange
-  crop: CropSelection
+  options: ExportOptions
   selected: CompressionLevel
   onChange: (level: CompressionLevel) => void
 }
@@ -16,20 +16,18 @@ const PRESETS: Array<{
   description: string
   reductionFactor: number
 }> = [
-  { id: 'none', label: 'Original', description: 'Preserve source fidelity', reductionFactor: 0 },
-  { id: '25', label: '25% smaller', description: 'Light optimization', reductionFactor: 0.25 },
-  { id: '50', label: '50% smaller', description: 'Balanced delivery', reductionFactor: 0.50 },
-  { id: '75', label: '75% smaller', description: 'Aggressive reduction', reductionFactor: 0.75 },
-  { id: '90', label: '90% smaller', description: 'Smallest handoff', reductionFactor: 0.90 }
+  { id: 'none', label: 'High quality', description: 'CRF 18 · size varies', reductionFactor: 0 },
+  { id: '25', label: '25% target reduction', description: 'Bitrate target', reductionFactor: 0.25 },
+  { id: '50', label: '50% target reduction', description: 'Bitrate target', reductionFactor: 0.50 },
+  { id: '75', label: '75% target reduction', description: 'Bitrate target', reductionFactor: 0.75 },
+  { id: '90', label: '90% target reduction', description: 'Bitrate target', reductionFactor: 0.90 }
 ]
 
-export default function CompressionPresets({ metadata, trim, crop, selected, onChange }: Props) {
+export default function CompressionPresets({ metadata, options, selected, onChange }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {PRESETS.map((preset) => {
-        const estimated = preset.reductionFactor === 0
-          ? estimateTrimmedSize(metadata, trim, crop)
-          : estimateCompressedSize(metadata, preset.reductionFactor, trim, crop)
+        const estimated = exportPlan({ ...options, mode: 'video', compressionLevel: preset.id }, metadata).targetBytes
         const isSelected = selected === preset.id
 
         return (
@@ -51,7 +49,7 @@ export default function CompressionPresets({ metadata, trim, crop, selected, onC
             </div>
 
             <div style={{ color: isSelected ? 'var(--accent)' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', alignSelf: 'center' }}>
-              {formatBytes(estimated)}
+              {estimated === null ? 'Variable' : `~${formatBytes(estimated)}`}
             </div>
           </button>
         )

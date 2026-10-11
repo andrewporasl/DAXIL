@@ -1,3 +1,8 @@
+import { app } from 'electron'
+import * as fs from 'fs'
+import { packagedBinaryPath, validateBinary } from './binaryValidation'
+export { validateBinary }
+
 const ffmpegStatic = require('ffmpeg-static') as string | null
 const ffprobeStatic = require('ffprobe-static') as { path?: string } | null
 
@@ -5,7 +10,10 @@ const AUTO_SETTING = 'auto'
 
 function toUnpackedPath(binaryPath: string | null | undefined): string | null {
   if (!binaryPath) return null
-  return binaryPath.replace('app.asar', 'app.asar.unpacked')
+  if (app.isPackaged) {
+    return packagedBinaryPath(app.getAppPath(), binaryPath)
+  }
+  return binaryPath
 }
 
 const bundledPaths = {
@@ -21,8 +29,10 @@ export function resolveBinaryPath(kind: 'ffmpeg' | 'ffprobe', setting: string | 
   const value = (setting ?? '').trim()
   const isAuto = value === '' || value === AUTO_SETTING || value === kind
   if (!isAuto) return value
-  return bundledPaths[kind] ?? kind
+  const bundled = bundledPaths[kind]
+  return bundled && fs.existsSync(bundled) ? bundled : kind
 }
+
 
 export function hasBundledBinary(kind: 'ffmpeg' | 'ffprobe'): boolean {
   return Boolean(bundledPaths[kind])

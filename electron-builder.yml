@@ -7,18 +7,30 @@ directories:
 files:
   - out/**/*
   - "!out/**/*.map"
+  - "!out/editor-ui*.png"
+  # ffprobe-static ships every platform's binary; each target below drops the others.
+  - "!node_modules/**/{README,CHANGELOG,HISTORY}*"
+  - "!node_modules/**/*.{md,markdown,d.ts,map}"
+electronLanguages:
+  - en-US
+compression: maximum
 asar: true
 asarUnpack:
   - node_modules/ffmpeg-static/**
   - node_modules/ffprobe-static/**
 mac:
   category: public.app-category.video
+  files:
+    - "!node_modules/ffprobe-static/bin/{linux,win32}/**"
   identity: null
   target:
     - target: dmg
     - target: zip
   icon: resources/icon.icns
 win:
+  files:
+    - "!node_modules/ffprobe-static/bin/{darwin,linux}/**"
+    - "!node_modules/ffprobe-static/bin/win32/ia32/**"
   target:
     - target: nsis
       arch:
@@ -30,8 +42,12 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  differentialPackage: false
 linux:
   category: AudioVideo
+  files:
+    - "!node_modules/ffprobe-static/bin/{darwin,win32}/**"
+    - "!node_modules/ffprobe-static/bin/linux/ia32/**"
   target:
     - target: AppImage
       arch:

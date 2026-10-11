@@ -66,9 +66,7 @@ export default function CropPanel({ metadata, crop, onCropChange }: Props) {
   }
 
   return (
-    <div className="card" style={{ padding: 12 }}>
-      <div className="section-title" style={{ marginBottom: 8 }}>Crop</div>
-
+    <div className="crop-panel">
       <button
         className={`option-button crop-toggle ${crop.enabled ? 'selected' : ''}`}
         onClick={handleToggle}

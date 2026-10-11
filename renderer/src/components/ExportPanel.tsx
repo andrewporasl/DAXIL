@@ -9,7 +9,11 @@ interface Props {
   mp3Bitrate: Mp3Bitrate
   gifScale: GifScale
   gifFps: GifFps
-  estimatedSizeBytes: number
+  measured: boolean
+  measuring: boolean
+  onMeasure: () => void
+  onCancelMeasure: () => void
+  estimatedSizeBytes: number | null
   outputDir: string
   onModeChange: (m: ExportMode) => void
   onMuteAudioChange: (v: boolean) => void
@@ -41,7 +45,7 @@ export default function ExportPanel({
   mp3Bitrate,
   gifScale,
   gifFps,
-  estimatedSizeBytes,
+  estimatedSizeBytes, measured, measuring, onMeasure, onCancelMeasure,
   outputDir,
   onModeChange,
   onMuteAudioChange,
@@ -151,10 +155,13 @@ export default function ExportPanel({
         )}
 
         <div className="metric-card export-metric-card">
-          <span className="metric-label">Estimated Output</span>
-          <span className="metric-value" style={{ fontSize: 22 }}>{formatBytes(estimatedSizeBytes)}</span>
+          <span className="metric-label">{measured ? 'Measured output' : mode === 'audio' ? 'Approximate output' : 'Bitrate target'}</span>
+          <span className="metric-value" style={{ fontSize: 22 }}>{estimatedSizeBytes === null ? 'Size varies' : `${measured ? '' : '~'}${formatBytes(estimatedSizeBytes)}`}</span>
         </div>
 
+        <button className="btn-ghost" onClick={onMeasure} disabled={disabled || exporting || measuring} title="Encode a temporary file to measure its actual size">{measuring ? 'Checking size…' : 'Check size'}</button>
+        {measuring && <button className="btn-ghost" onClick={onCancelMeasure}>Cancel size check</button>}
+        {!measured && estimatedSizeBytes !== null && <small className="surface-note">Target only. Check size for an exact result.</small>}
         <div>
           <label>Output folder</label>
           <div className="export-output-row">

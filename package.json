@@ -14,7 +14,12 @@
     "package:mac:arm64": "npm run release:assets && npm run build && electron-builder --mac dmg zip --arm64 --publish never",
     "package:win": "npm run release:assets && npm run build && electron-builder --win nsis --x64 --publish never",
     "package:linux": "npm run release:assets && npm run build && electron-builder --linux AppImage tar.gz --x64 --publish never",
-    "lint": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json"
+    "lint": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "test:ui": "npm run build && electron tests/editor-ui.cjs",
+    "screenshots": "npm run build && electron scripts/capture-screenshots.cjs",
+    "test:packaged": "node tests/packaged-smoke.mjs",
+    "test:dev-server": "node tests/dev-server.mjs"
   },
   "dependencies": {
     "electron-store": "^8.2.0",

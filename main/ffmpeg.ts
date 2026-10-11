@@ -1,8 +1,10 @@
+import { exportPlan } from '../shared/exportPlan.ts'
 import { spawn, ChildProcess } from 'child_process'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
 import type { CropSelection, ExportOptions, FFmpegEvent } from '../shared/types'
+import { buildOverlayFilters } from './ffmpegGraph.ts'
 
 let currentProcess: ChildProcess | null = null
 
@@ -53,15 +55,6 @@ function buildAtempoChain(rate: number): string | null {
   return filters.join(',')
 }
 
-function nextAvailablePath(outputPath: string): string {
-  if (!fs.existsSync(outputPath)) return outputPath
-  const ext = path.extname(outputPath)
-  const base = outputPath.slice(0, -ext.length)
-  let n = 2
-  while (fs.existsSync(`${base}_r${n}${ext}`)) n++
-  return `${base}_r${n}${ext}`
-}
-
 function even(value: number): number {
   return Math.floor(value / 2) * 2
 }
@@ -99,9 +92,11 @@ function spawnProcess(
     currentProcess = proc
 
     let stderrBuf = ''
+    let stderrTail = ''
 
     proc.stderr.on('data', (d: Buffer) => {
       stderrBuf += d.toString()
+      stderrTail = (stderrTail + d.toString()).slice(-6000)
       const lines = stderrBuf.split('\n')
       stderrBuf = lines.pop() ?? ''
       for (const line of lines) {
@@ -110,8 +105,9 @@ function spawnProcess(
     })
 
     proc.on('close', (code) => {
-      if (code === 0 || code === null) resolve()
-      else reject(new Error(`FFmpeg exited with code ${code}\n${stderrBuf}`))
+      currentProcess = null
+      if (code === 0) resolve()
+      else reject(new Error(`FFmpeg exited with code ${code ?? 'unknown'}\n${stderrTail}`))
     })
 
     proc.on('error', (err) => reject(err))
@@ -125,6 +121,7 @@ export function buildFFmpegArgs(
   videoWidth = 0,
   videoHeight = 0
 ): string[] {
+  if (options.clips?.length) return buildClipFFmpegArgs(options, fileSizeBytes, durationSeconds, videoWidth, videoHeight)
   const { mode, inputPath, trim, compressionLevel, muteAudio, mp3Bitrate = 192, playbackRate = 1 } = options
   const hasTrim = trim.enabled && (trim.startSeconds > 0 || trim.endSeconds < durationSeconds - 0.1)
   const effectiveDur = hasTrim ? trim.endSeconds - trim.startSeconds : durationSeconds
@@ -147,7 +144,7 @@ export function buildFFmpegArgs(
     args.push('-vn', '-c:a', 'libmp3lame', '-b:a', `${mp3Bitrate}k`)
     const atempoAf = buildAtempoChain(playbackRate)
     if (atempoAf) args.push('-af', atempoAf)
-    args.push(path.join(options.outputDir, options.outputFileName + '.mp3'))
+    args.push(options.outputPath ?? path.join(options.outputDir, options.outputFileName + '.mp3'))
     return args
   }
 
@@ -188,7 +185,115 @@ export function buildFFmpegArgs(
     }
   }
 
-  args.push(path.join(options.outputDir, options.outputFileName + '.mp4'))
+  args.push(options.outputPath ?? path.join(options.outputDir, options.outputFileName + '.mp4'))
+  return args
+}
+
+export function buildClipFFmpegArgs(
+  options: ExportOptions,
+  fileSizeBytes: number,
+  sourceDuration: number,
+  videoWidth = 0,
+  videoHeight = 0
+): string[] {
+  const clips = options.clips ?? []
+  if (!clips.length) throw new Error('Add at least one clip before exporting.')
+  const primary = { fileSizeBytes, durationSeconds: sourceDuration, audioCodec: options.hasAudio ? 'audio' : 'none' }
+  const plan = exportPlan(options, primary)
+  if (options.mode === 'audio' && !plan.audio) throw new Error('Add an audio track or choose media with audio before exporting.')
+  const duration = clips.reduce((total, clip) => total + clip.endSeconds - clip.startSeconds, 0)
+  const rate = options.playbackRate ?? 1
+  const filters: string[] = []
+  const parts: string[] = []
+  const args = ['-y', '-i', options.inputPath]
+  const paths = [options.inputPath]
+  const inputFor = (id?: string) => {
+    const asset = options.media?.find(item => item.id === id)
+    if (id && !asset) throw new Error('A timeline source is missing from the media pool.')
+    const file = asset?.metadata.filePath ?? options.inputPath
+    let index = paths.indexOf(file)
+    if (index < 0) { index = paths.length; paths.push(file); args.push('-i', file) }
+    return { index, meta: asset?.metadata ?? primary }
+  }
+  const video = options.mode !== 'audio'
+  const audio = plan.audio
+  for (let index = 0; index < clips.length; index++) {
+    const clip = clips[index]
+    const input = inputFor(clip.mediaId)
+    const length = clip.endSeconds - clip.startSeconds
+    if (!Number.isFinite(length) || length < 0.1 || clip.startSeconds < 0 || clip.endSeconds > input.meta.durationSeconds + 0.01) throw new Error('A clip has an invalid source range.')
+    if (video) {
+      const normalize = videoWidth > 0 && videoHeight > 0 ? `,scale=${even(videoWidth)}:${even(videoHeight)}:force_original_aspect_ratio=decrease,pad=${even(videoWidth)}:${even(videoHeight)}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${options.media?.find(asset => asset.metadata.filePath === options.inputPath)?.metadata.fps || 30},format=yuv420p` : ''
+      filters.push(`[${input.index}:v]trim=start=${clip.startSeconds}:end=${clip.endSeconds},setpts=PTS-STARTPTS${normalize}[v${index}]`)
+      parts.push(`[v${index}]`)
+    }
+    if (audio) {
+      const source = input.meta.audioCodec !== 'none'
+        ? `[${input.index}:a]atrim=start=${clip.startSeconds}:end=${clip.endSeconds},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration=${length}`
+        : `anullsrc=r=48000:cl=stereo,atrim=duration=${length}`
+      filters.push(`${source}[a${index}]`)
+      parts.push(`[a${index}]`)
+    }
+  }
+  filters.push(`${parts.join('')}concat=n=${clips.length}:v=${video ? 1 : 0}:a=${audio ? 1 : 0}${video ? '[vcat]' : ''}${audio ? '[abase]' : ''}`)
+  if (audio) {
+    const labels = ['[abase]']
+    ;(options.audioClips ?? []).forEach((clip, index) => {
+      const input = inputFor(clip.mediaId)
+      if (!Number.isFinite(clip.timelineStart) || clip.timelineStart < 0 || !Number.isFinite(clip.volume) || clip.volume < 0 || clip.volume > 2 || clip.startSeconds < 0 || clip.endSeconds > input.meta.durationSeconds + 0.01 || clip.endSeconds - clip.startSeconds < 0.1) throw new Error('An audio clip has an invalid range or volume.')
+      filters.push(`[${input.index}:a]atrim=start=${clip.startSeconds}:end=${clip.endSeconds},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,volume=${clip.volume},adelay=${Math.round(clip.timelineStart * 1000)}:all=1[overlay${index}]`)
+      labels.push(`[overlay${index}]`)
+    })
+    filters.push(`${labels.join('')}amix=inputs=${labels.length}:duration=first:normalize=0,alimiter=limit=0.95:level=0:latency=1,atrim=duration=${duration}[acat]`)
+  }
+  const atempo = buildAtempoChain(rate)
+
+  // Stacked video tracks composite over the sequence before crop, speed and GIF stages.
+  let composite = 'vcat'
+  if (video && options.overlays?.length) {
+    const frameWidth = even(videoWidth || 1280)
+    const frameHeight = even(videoHeight || 720)
+    const result = buildOverlayFilters(options.overlays, options.hiddenTracks ?? [], frameWidth, frameHeight, mediaId => {
+      const input = inputFor(mediaId)
+      return { index: input.index, durationSeconds: input.meta.durationSeconds, width: 0, height: 0 }
+    })
+    filters.push(...result.filters)
+    composite = result.output
+  }
+
+  if (options.mode === 'audio') {
+    const audioOutput = atempo ? 'aout' : 'acat'
+    if (atempo) filters.push(`[acat]${atempo}[aout]`)
+    args.push('-filter_complex', filters.join(';'), '-map', `[${audioOutput}]`, '-vn', '-c:a', 'libmp3lame', '-b:a', `${options.mp3Bitrate ?? 192}k`)
+    args.push(options.outputPath ?? path.join(options.outputDir, options.outputFileName + '.mp3'))
+    return args
+  }
+
+  const crop = cropFilter(normalizeCrop(options.crop, videoWidth, videoHeight))
+  if (options.mode === 'gif') {
+    const gifFilters = [rate !== 1 ? `setpts=(PTS-STARTPTS)*${(1 / rate).toFixed(6)}` : null,
+      `fps=${options.gifFps ?? 12}`, crop, `scale=${options.gifScale ?? 480}:-1:flags=lanczos`].filter(Boolean).join(',')
+    filters.push(`[${composite}]${gifFilters},split[paletteSource][gifSource]`)
+    filters.push('[paletteSource]palettegen[palette]')
+    filters.push('[gifSource][palette]paletteuse[gifout]')
+    args.push('-filter_complex', filters.join(';'), '-map', '[gifout]', '-an', options.outputPath ?? path.join(options.outputDir, options.outputFileName + '.gif'))
+    return args
+  }
+
+  const videoFilters = [rate !== 1 ? `setpts=(PTS-STARTPTS)*${(1 / rate).toFixed(6)}` : null, crop].filter(Boolean).join(',')
+  const videoOutput = videoFilters ? 'vout' : composite
+  if (videoFilters) filters.push(`[${composite}]${videoFilters}[vout]`)
+  let audioOutput = 'acat'
+  if (audio && atempo) { filters.push(`[acat]${atempo}[aout]`); audioOutput = 'aout' }
+  args.push('-filter_complex', filters.join(';'), '-map', `[${videoOutput}]`)
+  if (audio) args.push('-map', `[${audioOutput}]`)
+  else args.push('-an')
+  const reduction = REDUCTION_MAP[options.compressionLevel] ?? 0
+  if (reduction) {
+    args.push('-c:v', 'libx264', '-preset', 'fast', '-b:v', `${plan.videoKbps}k`)
+  } else args.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '18')
+  if (audio) args.push('-c:a', 'aac', '-b:a', reduction ? '128k' : '192k')
+  args.push(options.outputPath ?? path.join(options.outputDir, options.outputFileName + '.mp4'))
   return args
 }
 
@@ -212,8 +317,7 @@ async function runGif(
   const scaleFilter = `scale=${scale}:-1:flags=lanczos`
   const gifFilter = [speedFilter, 'fps=' + baseFps, videoFilter, scaleFilter].filter(Boolean).join(',')
   const palettePath = path.join(os.tmpdir(), `daxil_palette_${Date.now()}.png`)
-  const rawOutputPath = path.join(options.outputDir, options.outputFileName + '.gif')
-  const outputPath = nextAvailablePath(rawOutputPath)
+  const outputPath = options.outputPath ?? path.join(options.outputDir, options.outputFileName + '.gif')
 
   // Pass 1: generate palette
   const paletteArgs = ['-y']
@@ -256,6 +360,13 @@ export async function gifPreview(
   videoHeight: number,
   ffmpegPath: string
 ): Promise<string> {
+  if (options.clips?.length) {
+    const outputPath = path.join(os.tmpdir(), `daxil_preview_${Date.now()}.gif`)
+    await runFFmpeg({ ...options, outputPath, gifScale: 320 }, 0, durationSeconds, videoWidth, videoHeight, ffmpegPath, () => {})
+    const data = fs.readFileSync(outputPath)
+    try { fs.unlinkSync(outputPath) } catch { /* ignore */ }
+    return 'data:image/gif;base64,' + data.toString('base64')
+  }
   const { inputPath, trim } = options
   const hasTrim = trim.enabled && (trim.startSeconds > 0 || trim.endSeconds < durationSeconds - 0.1)
   const rate = options.playbackRate ?? 1
@@ -295,24 +406,28 @@ export function runFFmpeg(
   ffmpegPath: string,
   onEvent: ProgressSender
 ): Promise<string> {
-  if (options.mode === 'gif') {
+  if (options.mode === 'gif' && !options.clips?.length) {
     return runGif(options, durationSeconds, videoWidth, videoHeight, ffmpegPath, onEvent)
   }
 
   return new Promise((resolve, reject) => {
     const hasTrim = options.trim.enabled && (options.trim.startSeconds > 0 || options.trim.endSeconds < durationSeconds - 0.1)
-    const effectiveDuration = hasTrim ? options.trim.endSeconds - options.trim.startSeconds : durationSeconds
+    const effectiveDuration = options.clips?.length
+      ? options.clips.reduce((total, clip) => total + clip.endSeconds - clip.startSeconds, 0) / (options.playbackRate ?? 1)
+      : hasTrim ? options.trim.endSeconds - options.trim.startSeconds : durationSeconds
     const args = buildFFmpegArgs(options, fileSizeBytes, durationSeconds, videoWidth, videoHeight)
-    const outputPath = nextAvailablePath(args[args.length - 1])
-    args[args.length - 1] = outputPath
+    const outputPath = args[args.length - 1]
 
     const proc = spawn(ffmpegPath, args)
     currentProcess = proc
+    let failedToSpawn = false
 
     const logLines: string[] = []
 
+    let stderrTail = ''
     proc.stderr.on('data', (d: Buffer) => {
       const chunk = d.toString()
+      stderrTail = (stderrTail + chunk).slice(-6000)
       for (const line of chunk.split('\n')) {
         if (!line.trim()) continue
         logLines.push(line)
@@ -328,23 +443,27 @@ export function runFFmpeg(
 
     proc.on('close', (code) => {
       currentProcess = null
-      if (code === 0 || code === null) {
+      if (failedToSpawn) return
+      if (code === 0) {
         try {
           const stat = fs.statSync(outputPath)
+          if (stat.size === 0) throw new Error('The exported file is empty.')
           onEvent({ type: 'complete', outputPath, outputSizeBytes: stat.size })
           resolve(outputPath)
-        } catch {
-          onEvent({ type: 'complete', outputPath, outputSizeBytes: 0 })
-          resolve(outputPath)
+        } catch (error) {
+          const message = `FFmpeg reported success but the output could not be read: ${error instanceof Error ? error.message : String(error)}`
+          onEvent({ type: 'error', message })
+          reject(new Error(message))
         }
       } else {
-        const raw = logLines.slice(-20).join('\n')
+        const raw = stderrTail || logLines.slice(-20).join('\n')
         onEvent({ type: 'error', message: `FFmpeg exited with code ${code}`, raw })
-        reject(new Error(`FFmpeg exited with code ${code}`))
+        reject(new Error(`FFmpeg exited with code ${code}\n${raw}`))
       }
     })
 
     proc.on('error', (err) => {
+      failedToSpawn = true
       currentProcess = null
       const msg = `Failed to spawn ffmpeg: ${err.message}`
       onEvent({ type: 'error', message: msg })
