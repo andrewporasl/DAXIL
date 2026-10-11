@@ -3,6 +3,7 @@ import type { MediaAsset } from '@shared/types'
 import Icon from './Icon'
 import { formatBytes, formatDuration } from '../lib/sizeEstimator'
 import { MEDIA_MIME } from '../lib/timeline'
+import { assetName, sanitizeName } from '../lib/media'
 
 interface Props {
   media: MediaAsset[]
@@ -11,10 +12,19 @@ interface Props {
   onImport: () => void
   onInsert: (ids: string[]) => void
   onRemove: (ids: string[]) => void
+  onRename: (id: string, name: string) => void
 }
 
-export default function MediaPool({ media, busy, usage, onImport, onInsert, onRemove }: Props) {
+export default function MediaPool({ media, busy, usage, onImport, onInsert, onRemove, onRename }: Props) {
   const [selected, setSelected] = useState<string[]>([])
+  const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null)
+  const commitRename = () => {
+    if (!renaming) return
+    const asset = media.find(item => item.id === renaming.id)
+    const next = sanitizeName(renaming.value)
+    if (asset && next && next !== assetName(asset)) onRename(asset.id, next)
+    setRenaming(null)
+  }
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const anchor = useRef<string | null>(null)
   useEffect(() => { setSelected(ids => ids.filter(id => media.some(asset => asset.id === id))) }, [media])
@@ -50,6 +60,10 @@ export default function MediaPool({ media, busy, usage, onImport, onInsert, onRe
         event.preventDefault(); event.stopPropagation(); onInsert(ordered(selected))
       } else if ((event.key === 'Delete' || event.key === 'Backspace') && selected.length) {
         event.preventDefault(); event.stopPropagation(); remove(selected)
+      } else if (event.key === 'F2' && selected.length === 1) {
+        event.preventDefault(); event.stopPropagation()
+        const asset = media.find(item => item.id === selected[0])
+        if (asset) setRenaming({ id: asset.id, value: assetName(asset) })
       } else if (event.key === 'Escape') setSelected([])
     }}>
     <div className="media-pool-heading">
@@ -75,15 +89,22 @@ export default function MediaPool({ media, busy, usage, onImport, onInsert, onRe
             event.dataTransfer.effectAllowed = 'copy'
           }}
           onDoubleClick={() => onInsert(isSelected ? ordered(selected) : [asset.id])}
-          title={`${meta.fileName}\n${meta.width ? `${meta.width} × ${meta.height} · ${meta.videoCodec} · ` : ''}${formatDuration(meta.durationSeconds)} · ${formatBytes(meta.fileSizeBytes)}${meta.audioCodec && meta.audioCodec !== 'none' ? ` · ${meta.audioCodec}` : ''}\nUsed by ${uses} clip${uses === 1 ? '' : 's'}. Drag to the timeline, double-click to append.`}>
+          title={`${assetName(asset)}${asset.name ? ` (${meta.fileName})` : ''}\n${meta.width ? `${meta.width} × ${meta.height} · ${meta.videoCodec} · ` : ''}${formatDuration(meta.durationSeconds)} · ${formatBytes(meta.fileSizeBytes)}${meta.audioCodec && meta.audioCodec !== 'none' ? ` · ${meta.audioCodec}` : ''}\nUsed by ${uses} clip${uses === 1 ? '' : 's'}. Drag to the timeline, double-click to append.`}>
           <div className="media-asset-thumb">
             {asset.thumbnail ? <img src={asset.thumbnail} alt="" draggable={false} /> : <Icon name={asset.kind === 'audio' ? 'music' : 'video'} />}
             <span className="media-asset-duration">{formatDuration(meta.durationSeconds)}</span>
-            <button className="media-asset-add" onClick={event => { event.stopPropagation(); onInsert([asset.id]) }} disabled={busy} aria-label={`Add ${meta.fileName} to timeline`} title="Append to timeline"><Icon name="plus" size={13} /></button>
-            <button className="media-asset-remove" onClick={event => { event.stopPropagation(); remove(isSelected ? selected : [asset.id]) }} disabled={busy} aria-label={`Remove ${meta.fileName} from pool`} title="Remove from pool (Delete)"><Icon name="x" size={12} /></button>
+            <button className="media-asset-add" onClick={event => { event.stopPropagation(); onInsert([asset.id]) }} disabled={busy} aria-label={`Add ${assetName(asset)} to timeline`} title="Append to timeline"><Icon name="plus" size={13} /></button>
+            <button className="media-asset-remove" onClick={event => { event.stopPropagation(); remove(isSelected ? selected : [asset.id]) }} disabled={busy} aria-label={`Remove ${assetName(asset)} from pool`} title="Remove from pool (Delete)"><Icon name="x" size={12} /></button>
             {uses > 0 && <span className="media-asset-uses" title={`On the timeline ${uses}×`}>{uses}</span>}
           </div>
-          <span className="media-asset-name">{meta.fileName}</span>
+          {renaming?.id === asset.id
+            ? <input className="media-asset-rename" autoFocus value={renaming.value} aria-label="Rename media"
+                onChange={event => setRenaming({ id: asset.id, value: event.target.value })}
+                onFocus={event => event.target.select()}
+                onBlur={commitRename}
+                onKeyDown={event => { event.stopPropagation(); if (event.key === 'Enter') commitRename(); else if (event.key === 'Escape') setRenaming(null) }}
+                onClick={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()} onPointerDown={event => event.stopPropagation()} />
+            : <span className="media-asset-name" onDoubleClick={event => { event.stopPropagation(); setRenaming({ id: asset.id, value: assetName(asset) }) }} title="Double-click to rename">{assetName(asset)}</span>}
         </div>
       })}
     </div> : <button className="media-pool-empty" onClick={onImport} disabled={busy}>
@@ -93,6 +114,7 @@ export default function MediaPool({ media, busy, usage, onImport, onInsert, onRe
     </button>}
     {menu && menuAsset && <div className="timeline-popover timeline-actions" role="menu" style={{ left: menu.x, top: menu.y }}>
       <button role="menuitem" onClick={() => { setMenu(null); onInsert(ordered(menuIds)) }}>Add to timeline</button>
+      <button role="menuitem" onClick={() => { setMenu(null); setRenaming({ id: menuAsset.id, value: assetName(menuAsset) }) }}>Rename… (F2)</button>
       <span className="timeline-menu-divider" />
       <button role="menuitem" onClick={() => remove(menuIds)}>Remove from pool{menuIds.length > 1 ? ` (${menuIds.length})` : ''}</button>
     </div>}

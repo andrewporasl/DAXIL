@@ -33,6 +33,7 @@ export interface MediaAsset {
   kind: 'video' | 'audio'
   metadata: VideoMetadata
   thumbnail?: string
+  name?: string          // display name; defaults to the file name
 }
 
 // Every clip on the timeline, video or audio, sits freely on a numbered track.

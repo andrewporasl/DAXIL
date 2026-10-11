@@ -3,7 +3,7 @@ import { spawn, type ChildProcess } from 'child_process'
 import * as fs from 'fs'
 import * as path from 'path'
 import type { DownloadProgress, DownloadResult } from '../shared/types'
-import { friendlyDownloadError, normalizeLink, parseProgressLine, ytDlpArgs, ytDlpAssetName, YT_DLP_RELEASE_URL } from './downloaderCore'
+import { friendlyDownloadError, nextClipName, normalizeLink, parseProgressLine, ytDlpArgs, ytDlpAssetName, YT_DLP_RELEASE_URL } from './downloaderCore'
 
 type Progress = (event: DownloadProgress) => void
 
@@ -102,7 +102,8 @@ export async function downloadLink(rawUrl: string, options: { ytDlpPath?: string
   const binary = await resolveYtDlp(options.ytDlpPath, progress)
   fs.mkdirSync(options.downloadDir, { recursive: true })
   const ffmpegDir = options.ffmpegPath && options.ffmpegPath !== 'ffmpeg' && fs.existsSync(options.ffmpegPath) ? path.dirname(options.ffmpegPath) : null
-  const template = path.join(options.downloadDir, '%(title).80s [%(id)s].%(ext)s')
+  const name = nextClipName(fs.readdirSync(options.downloadDir))
+  const template = path.join(options.downloadDir, `${name}.%(ext)s`)
   progress({ phase: 'media', percent: 0, message: 'Downloading…' })
   return new Promise((resolve, reject) => {
     const proc = spawn(binary, ytDlpArgs(url, template, ffmpegDir), { windowsHide: true })
@@ -131,8 +132,7 @@ export async function downloadLink(rawUrl: string, options: { ytDlpPath?: string
       // --print emits the file path and then the title, each on its own line.
       const filePath = [...printed].reverse().find(line => path.isAbsolute(line) && fs.existsSync(line))
       if (code !== 0 || !filePath) { reject(new Error(friendlyDownloadError(stderr))); return }
-      const title = printed[printed.indexOf(filePath) + 1] || path.basename(filePath, path.extname(filePath))
-      resolve({ filePath, title })
+      resolve({ filePath, title: name })
     })
   })
 }

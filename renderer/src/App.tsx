@@ -19,6 +19,7 @@ import Icon from './components/Icon'
 import { clipFromAsset, insertAssets, removeMedia, selectClips, splitAt, timelineEnd, toggleTrack, trackCount, type Placement } from './lib/edit'
 import { MEDIA_EXTENSIONS } from './lib/timeline'
 import { formatDuration } from './lib/sizeEstimator'
+import { assetName } from './lib/media'
 
 type ExportState = 'idle' | 'running' | 'done' | 'error'
 type ThemeName = 'cloud' | 'mint' | 'rose' | 'amber' | 'mist' | 'sage' | 'blush' | 'linen'
@@ -161,7 +162,7 @@ export default function App() {
 
   // One import path for the dialog, OS drops, timeline drops and links. The first video sets
   // the project frame; everything lands in the pool, and optionally on the timeline.
-  const importPaths = async (paths: string[], placement?: Placement) => {
+  const importPaths = async (paths: string[], placement?: Placement, labels: Record<string, string> = {}) => {
     const files = [...new Set(paths)].filter(file => MEDIA_EXTENSIONS.test(file))
     if (!files.length) { if (paths.length) setMetaError('Those files are not a supported video or audio format.'); return [] }
     setImporting(true)
@@ -180,7 +181,7 @@ export default function App() {
           if (meta.durationSeconds < 0.1) throw new Error('no playable media')
           const kind = meta.width > 0 ? 'video' : 'audio'
           const thumbnail = kind === 'video' ? (await window.electronAPI.getThumbnails(file, meta.durationSeconds, 1).catch(() => []))[0] : undefined
-          const asset: MediaAsset = { id: crypto.randomUUID(), kind, metadata: meta, thumbnail }
+          const asset: MediaAsset = { id: crypto.randomUUID(), kind, metadata: meta, thumbnail, name: labels[file] }
           if (!currentProject && kind === 'video') currentProject = startProject(meta)
           added.push(asset); placed.push(asset)
         } catch { failed.push(file.split(/[\\/]/).pop() ?? file) }
@@ -231,12 +232,13 @@ export default function App() {
     if (!assets.length) return
     const used = clips.filter(clip => ids.includes(clip.mediaId)).length
     if (used > 0) {
-      const names = assets.length === 1 ? assets[0].metadata.fileName : `${assets.length} items`
+      const names = assets.length === 1 ? assetName(assets[0]) : `${assets.length} items`
       if (!window.confirm(`Remove ${names} and the ${used} clip${used === 1 ? '' : 's'} that use${used === 1 ? 's' : ''} it from the timeline?`)) return
     }
     commit(removeMedia(clips, ids), media.filter(asset => !ids.includes(asset.id)))
     setSelectedIds(selected => selected.filter(id => !clips.some(clip => clip.id === id && ids.includes(clip.mediaId))))
   }
+  const handleRenameMedia = (id: string, name: string) => commit(clips, media.map(asset => asset.id === id ? { ...asset, name } : asset))
 
   // Files dropped anywhere in the window are imported; the timeline handles its own drops so it can place them.
   useEffect(() => {
@@ -272,7 +274,7 @@ export default function App() {
   const handleLinkAdd = async (url: string) => {
     if (downloading) return
     const result = await downloadFromLink(url)
-    if (result) await importPathsRef.current([result.filePath], { kind: 'video', track: 0, time: timelineEnd(clips) })
+    if (result) await importPathsRef.current([result.filePath], { kind: 'video', track: 0, time: timelineEnd(clips) }, { [result.filePath]: result.title })
   }
   // One click to GIF: download, pick a file, encode the whole clip. Nothing touches the timeline.
   const handleLinkGif = async (url: string) => {
@@ -281,7 +283,7 @@ export default function App() {
     if (!result) return
     try {
       const meta = await window.electronAPI.getMetadata(result.filePath)
-      const asset: MediaAsset = { id: crypto.randomUUID(), kind: 'video', metadata: meta, thumbnail: (await window.electronAPI.getThumbnails(result.filePath, meta.durationSeconds, 1).catch(() => []))[0] }
+      const asset: MediaAsset = { id: crypto.randomUUID(), kind: 'video', metadata: meta, thumbnail: (await window.electronAPI.getThumbnails(result.filePath, meta.durationSeconds, 1).catch(() => []))[0], name: result.title }
       setMedia(items => items.some(item => item.metadata.filePath === meta.filePath) ? items : [...items, asset])
       if (meta.durationSeconds > 60 && !window.confirm(`This clip is ${formatDuration(meta.durationSeconds)} long, which makes a very large GIF. Continue?`)) return
       const baseName = (result.title || meta.fileName.replace(/\.[^.]+$/, '')).replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'clip'
@@ -373,7 +375,7 @@ export default function App() {
   }
   const handleExport = useCallback(async () => {
     if (!project || !source || clips.length === 0) return
-    const baseName = source.metadata.fileName.replace(/\.[^.]+$/, '')
+    const baseName = (source.name?.trim() || source.metadata.fileName.replace(/\.[^.]+$/, ''))
     const speedSuffix = playbackRate !== 1 ? `_${playbackRate}x` : ''
     const videoModifiers = [muteAudio ? 'muted' : null, compressionLevel !== 'none' ? `${compressionLevel}pct` : null, crop.enabled ? 'cropped' : null].filter(Boolean)
     const suffix = exportMode === 'audio' ? `_audio${speedSuffix}` : exportMode === 'gif' ? `_animated${crop.enabled ? '_cropped' : ''}${speedSuffix}` : videoModifiers.length > 0 ? `_${videoModifiers.join('_')}${speedSuffix}` : `_export${speedSuffix}`
@@ -406,7 +408,7 @@ export default function App() {
   const mediaPanel = <>
     <LinkBox busy={downloading || exportState === 'running'} progress={downloadProgress} error={downloadError}
       onAdd={url => void handleLinkAdd(url)} onGif={url => void handleLinkGif(url)} onCancel={() => void window.electronAPI.cancelDownload()} />
-    <MediaPool media={media} usage={usage} onImport={handleImportMedia} onInsert={ids => handleInsertMedia(ids)} onRemove={handleRemoveMedia} busy={isBusy} />
+    <MediaPool media={media} usage={usage} onImport={handleImportMedia} onInsert={ids => handleInsertMedia(ids)} onRemove={handleRemoveMedia} onRename={handleRenameMedia} busy={isBusy} />
     {loadingMeta && <div className="surface-note panel-note">Reading file metadata and building thumbnails…</div>}
     {metaError && <div className="panel-note panel-note-error" role="alert">{metaError}<button className="icon-button" onClick={() => setMetaError(null)} aria-label="Dismiss"><Icon name="x" size={12} /></button></div>}
   </>

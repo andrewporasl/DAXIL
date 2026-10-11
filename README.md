@@ -29,6 +29,7 @@ Three ways in, all of which also work when nothing is loaded yet:
 - **Drop files anywhere** in the window. The first video becomes the project; everything else goes to the media pool. Drop onto the timeline to place clips exactly there.
 - **Import** with the `+` button or **Ctrl+I**. Multi-select works.
 - **Paste a link.** The box accepts anything [yt-dlp](https://github.com/yt-dlp/yt-dlp) can read. **Add** (or Enter) downloads and appends it to V1. **GIF** downloads and encodes the whole clip to a GIF you choose a location for.
+  Downloads are saved as `clip1.mp4`, `clip2.mp4`, … in your download folder — never the post's title or author — and show up under that name. Rename anything in the pool by double-clicking its name (or F2, or right-click → Rename); the new name follows the clip onto the timeline and into the export file name.
 
 The media pool is a thumbnail grid: click, Ctrl-click or Shift-click to select several, then drag them to the timeline together, press Enter, or use the hover `+` on a tile. The hover `×`, the right-click menu or the Delete key remove an asset; if it is on the timeline you are asked first, and its clips go with it (one undo brings everything back). The badge on a tile shows how many clips use it.
 

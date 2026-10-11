@@ -205,6 +205,18 @@ app.whenReady().then(async () => {
     assert.equal(await count('.media-asset'), poolBefore, 'undo restores the asset')
     assert.equal(await count('.clip-audio'), audioClipsBefore, 'and its clips')
 
+    // Rename a pool asset: the timeline labels follow, and it is one undo step.
+    await js(`document.querySelectorAll('.media-asset')[0].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 200 }))`)
+    await js(`Array.from(document.querySelectorAll('[role="menuitem"]')).find(button => button.textContent.startsWith('Rename')).click()`)
+    await waitFor(() => js('Boolean(document.querySelector(".media-asset-rename"))'), 'rename field did not open')
+    await setInput('.media-asset-rename', 'intro shot')
+    await js(`document.querySelector('.media-asset-rename').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`)
+    await waitFor(() => js('document.querySelectorAll(".media-asset")[0].textContent.includes("intro shot")'), 'pool tile was not renamed')
+    assert.ok((await js(`Array.from(document.querySelectorAll('.clip-video .clip-name'), n => n.textContent)`)).some(text => text.includes('intro shot')), 'timeline clips show the new name')
+    await click('[aria-label="Undo edit"]')
+    assert.ok(!(await js('document.querySelectorAll(".media-asset")[0].textContent')).includes('intro shot'), 'rename is undoable')
+    await click('[aria-label="Redo edit"]')
+
     // Toolbar stays compact; the inspector shows only transform / crop / compression / deliver.
     const toolbar = await rect('.timeline-toolbar')
     assert.ok(toolbar.height < 40, 'editing controls should stay compact')
@@ -244,7 +256,7 @@ app.whenReady().then(async () => {
     assert.equal((await ranges()).length, beforeLink + 1, 'quick GIF does not touch the timeline')
 
     fs.writeFileSync(path.join(root, 'out/editor-ui.png'), (await contents.capturePage()).toPNG())
-    console.log('UI PASS: trim/undo/redo, split, cross-track drag, snapping, anchored zoom, marquee, audio tracks, pool delete cascade, slim inspector, export shape, size check, link import, quick GIF')
+    console.log('UI PASS: rename, trim/undo/redo, split, cross-track drag, snapping, anchored zoom, marquee, audio tracks, pool delete cascade, slim inspector, export shape, size check, link import, quick GIF')
     window.destroy()
     app.exit(0)
   } catch (error) {

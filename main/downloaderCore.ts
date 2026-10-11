@@ -26,6 +26,13 @@ export function isProbablyMediaLink(text: string): boolean {
   return /youtube\.com|youtu\.be|twitter\.com|x\.com|tiktok\.com|instagram\.com|vimeo\.com|reddit\.com|twitch\.tv|streamable\.com|facebook\.com|\.(mp4|webm|mov|gif)(\?|$)/i.test(link)
 }
 
+// Downloads are saved as clip1, clip2, … so a tweet or video title never becomes a file name.
+export function nextClipName(existingNames: string[], prefix = 'clip'): string {
+  const pattern = new RegExp(`^${prefix}(\\d+)(?:\\.|$)`, 'i')
+  const used = existingNames.map(name => pattern.exec(name)).filter((match): match is RegExpExecArray => Boolean(match)).map(match => Number(match[1]))
+  return `${prefix}${(used.length ? Math.max(...used) : 0) + 1}`
+}
+
 export function ytDlpArgs(url: string, outputTemplate: string, ffmpegDir: string | null): string[] {
   const args = [
     '--no-playlist', '--newline', '--progress', '--no-warnings',

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import type { Clip, MediaAsset } from '@shared/types'
 import { clipLength } from '../lib/edit'
+import { assetName } from '../lib/media'
 
 export const VIDEO_ROW = 44
 export const AUDIO_ROW = 26
@@ -66,11 +67,11 @@ export default function Tracks({ kind, tracks, clips, media, span, selectedIds, 
             onPointerDown={event => onClipPointerDown(event, clip, (event.target as HTMLElement).dataset.edge as 'start' | 'end' | undefined ?? null)}
             onContextMenu={event => { event.preventDefault(); event.stopPropagation(); onClipContextMenu(clip, event.clientX, event.clientY) }}
             onDoubleClick={() => onClipDoubleClick?.(clip)}
-            title={`${asset?.metadata.fileName ?? kind} · ${clip.startSeconds.toFixed(2)}–${clip.endSeconds.toFixed(2)}s · drag to move, edges to trim, right-click for actions`}>
+            title={`${assetName(asset, kind)} · ${clip.startSeconds.toFixed(2)}–${clip.endSeconds.toFixed(2)}s · drag to move, edges to trim, right-click for actions`}>
             {kind === 'video' && asset?.thumbnail && <div className="clip-thumb" style={{ backgroundImage: `url(${asset.thumbnail})` }} />}
             {kind === 'audio' && <AudioLayer clip={clip} asset={asset} time={time} playing={playing} rate={rate} muted={muteAll || disabled} />}
             <span className="clip-trim start" data-edge="start" />
-            <span className="clip-name">{clip.muted && kind === 'audio' ? '∅ ' : ''}{asset?.metadata.fileName}</span>
+            <span className="clip-name">{clip.muted && kind === 'audio' ? '∅ ' : ''}{assetName(asset)}</span>
             <span className="clip-trim end" data-edge="end" />
           </div>
         })}

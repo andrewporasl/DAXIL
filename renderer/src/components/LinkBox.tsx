@@ -27,7 +27,7 @@ export default function LinkBox({ busy, progress, error, onAdd, onGif, onCancel 
         onChange={event => setValue(event.target.value)}
         onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); submit(onAdd) } }}
         onPaste={event => { const text = event.clipboardData.getData('text'); if (looksLikeLink(text) && !busy) { event.preventDefault(); setValue(''); onAdd(text.trim()) } }}
-        placeholder="Paste a YouTube or X link…"
+        placeholder="YouTube or X link…"
         aria-label="Video link"
         disabled={busy}
         spellCheck={false}

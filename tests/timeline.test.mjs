@@ -6,7 +6,7 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { buildTimelineGraph } from '../main/ffmpegGraph.ts'
 import { exportPlan, timelineSpan } from '../shared/exportPlan.ts'
-import { friendlyDownloadError, normalizeLink, parseProgressLine, ytDlpArgs, ytDlpAssetName } from '../main/downloaderCore.ts'
+import { friendlyDownloadError, nextClipName, normalizeLink, parseProgressLine, ytDlpArgs, ytDlpAssetName } from '../main/downloaderCore.ts'
 
 const clip = (over = {}) => ({ id: 'c', mediaId: 'a', kind: 'video', track: 0, timelineStart: 0, startSeconds: 0, endSeconds: 2, x: 0, y: 0, scale: 1, opacity: 1, volume: 1, muted: false, ...over })
 const inputs = { a: { index: 0, durationSeconds: 10 }, b: { index: 1, durationSeconds: 5 }, s: { index: 2, durationSeconds: 30 } }
@@ -85,6 +85,8 @@ test('links are validated before anything is spawned', () => {
   assert.equal(parseProgressLine('[youtube] abc: Downloading webpage'), null)
   assert.equal(friendlyDownloadError('ERROR: [youtube] abc: Private video. Sign in if you have been granted access'), 'That video is private.')
   assert.equal(friendlyDownloadError('ERROR: Unsupported URL: https://example.com'), 'That site is not supported.')
+  assert.equal(nextClipName([]), 'clip1')
+  assert.equal(nextClipName(['clip1.mp4', 'clip3.mp4', 'clip2.part', 'notes.txt', 'clipart.mp4']), 'clip4', 'downloads get the next generic number, never a title')
   assert.equal(ytDlpAssetName('win32'), 'yt-dlp.exe')
   assert.equal(ytDlpAssetName('darwin'), 'yt-dlp_macos')
 })

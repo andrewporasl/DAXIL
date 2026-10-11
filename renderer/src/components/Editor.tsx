@@ -4,6 +4,7 @@ import { formatDuration } from '../lib/sizeEstimator'
 import Icon from './Icon'
 import Tracks, { rowHeight, ROW_GAP } from './Tracks'
 import { clipEnd, clipLength, clipsAt, FULL_FRAME, PIP_FRAME, primaryClipAt, snapTargets, snapTime, sourceTimeAt, timelineEnd, trackCount, trimEdge, type Placement } from '../lib/edit'
+import { assetName } from '../lib/media'
 import { anchoredScrollLeft, clampZoom, formatRulerTime, maxZoom, MEDIA_MIME, parseMediaIds, rectsIntersect, rulerStep, wheelZoomFactor } from '../lib/timeline'
 
 export type SelectMode = 'replace' | 'toggle' | 'range' | 'preserve' | 'add'
@@ -95,7 +96,7 @@ function VideoLayer({ clip, asset, bounds, frameAspect, time, playing, rate, mut
     ? { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height, opacity: clip.opacity, visibility: active ? 'visible' : 'hidden' }
     : { left: bounds.left + clip.x * bounds.width, top: bounds.top + clip.y * bounds.height, width: clip.scale * bounds.width, height: clip.scale * bounds.width * aspect, opacity: clip.opacity, visibility: active ? 'visible' : 'hidden' }
   return <div className={`layer${selected ? ' is-selected' : ''}${full ? ' is-full' : ''}`} data-id={clip.id} style={style} onPointerDown={onPointerDown}
-    title={`${asset?.metadata.fileName ?? 'Video'} · V${clip.track + 1} · drag to move, corner to resize`}>
+    title={`${assetName(asset, 'Video')} · V${clip.track + 1} · drag to move, corner to resize`}>
     <video ref={ref} playsInline preload="auto" className={full ? 'layer-video is-contain' : 'layer-video'} src={asset ? `safe-file://video?path=${encodeURIComponent(asset.metadata.filePath)}` : undefined} />
     {selected && <div className="layer-resize-handle" onPointerDown={onResizeDown} />}
   </div>
