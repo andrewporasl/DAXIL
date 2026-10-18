@@ -10,12 +10,10 @@ Runs entirely on your machine.
 
 [![Latest release](https://img.shields.io/github/v/release/andrewporasl/DAXIL?style=flat-square&label=release&color=8fa7ff)](https://github.com/andrewporasl/DAXIL/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/andrewporasl/DAXIL/total?style=flat-square&color=93d9be)](https://github.com/andrewporasl/DAXIL/releases)
-[![Build](https://img.shields.io/github/actions/workflow/status/andrewporasl/DAXIL/release.yml?style=flat-square&label=build)](https://github.com/andrewporasl/DAXIL/actions/workflows/release.yml)
 <br />
-[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-555?style=flat-square)](#download)
+[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS%20soon-555?style=flat-square)](#download)
 [![Electron](https://img.shields.io/github/package-json/dependency-version/andrewporasl/DAXIL/dev/electron?style=flat-square&logo=electron&logoColor=white&color=47848f)](https://github.com/andrewporasl/DAXIL/blob/main/package.json)
 [![FFmpeg](https://img.shields.io/badge/powered%20by-FFmpeg-007808?style=flat-square&logo=ffmpeg&logoColor=white)](https://ffmpeg.org)
-
 
 [Download](https://github.com/andrewporasl/DAXIL/releases) · [Features](#features) · [Showcase](#showcase) · [Updates](#updates) · [Contributing](#contributing)
 
@@ -50,59 +48,59 @@ Runs entirely on your machine.
 
 <div align="center">
 
-<img src="resources/showcase/timeline-stack.png" alt="Timeline with V2 stacked over V1 and an audio track" width="900" /><br />
+<img src="resources/showcase/timeline-stack.png" alt="Timeline with V2 stacked over V1, a text track and an audio track" width="900" /><br />
 <sub><b>Multi-track timeline</b> · free-form video, audio and text tracks, picture-in-picture, snapping</sub>
+
+<br /><br />
+
+<img src="resources/showcase/text-overlay.png" alt="A title over the video with the text editing strip below the preview" width="900" /><br />
+<sub><b>Text overlays</b> · eight fonts, outline, shadow or box, exported exactly as previewed</sub>
+
+<br /><br />
+
+<img src="resources/showcase/snap-guides.png" alt="A picture-in-picture layer snapping to the canvas centre lines with pink guides" width="900" /><br />
+<sub><b>Canvas snapping</b> · layers and text snap to the edges and centre lines</sub>
 
 <br /><br />
 
 <table>
   <tr>
-    <td align="center" valign="middle" width="50%">
-      <img src="resources/showcase/text-overlay.png" alt="A title over the video with the text editing strip below the preview" width="420" /><br />
-      <sub><b>Text overlays</b><br />Eight fonts, outline, shadow or box, exported exactly as previewed</sub>
+    <td align="center" valign="top" width="50%">
+      <img src="resources/showcase/clip-properties.png" alt="Clip properties: source details, in and out points, per-clip speed, size, position and opacity" width="400" /><br />
+      <sub><b>Clip properties</b><br />Each clip or split piece gets its own speed, gain and placement</sub>
     </td>
-    <td align="center" valign="middle" width="50%">
-      <img src="resources/showcase/snap-guides.png" alt="A picture-in-picture layer snapping to the canvas centre lines with pink guides" width="420" /><br />
-      <sub><b>Canvas snapping</b><br />Layers and text snap to edges and centre lines</sub>
-    </td>
-  </tr>
-</table>
-
-<br />
-
-<table>
-  <tr>
-    <td align="center" valign="middle" width="33%">
-      <img src="resources/showcase/inspector.png" alt="Compression and export panel" width="260" /><br />
+    <td align="center" valign="top" width="50%">
+      <img src="resources/showcase/inspector.png" alt="Compression presets with estimated sizes" width="400" /><br />
       <sub><b>Compression &amp; export</b><br />Presets with size estimates, MP4 / MP3 / GIF</sub>
     </td>
-    <td align="center" valign="middle" width="33%">
-      <img src="resources/showcase/link-choice.png" alt="Link dialog: add to media pool, or convert and save as MP4, MP3 or GIF" width="260" /><br />
-      <sub><b>Paste a link</b><br />Edit it, or convert it straight to a file</sub>
-    </td>
-    <td align="center" valign="middle" width="33%">
-      <img src="resources/showcase/settings-storage.png" alt="Settings listing where DAXIL stores files" width="260" /><br />
-      <sub><b>Storage</b><br />Every file location, one click to open</sub>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" valign="middle" colspan="3">
-      <img src="resources/showcase/settings-updates.png" alt="Settings showing a new version ready to download" width="420" /><br />
-      <sub><b>Updates</b><br />New versions download and install from inside the app</sub>
-    </td>
   </tr>
 </table>
 
 <br />
 
+<img src="resources/showcase/link-choice.png" alt="Link dialog: add to media pool, or convert and save as MP4, MP3 or GIF" width="760" /><br />
+<sub><b>Paste a link</b> · edit it, or convert it straight to a file</sub>
+
+<br /><br />
+
+<img src="resources/showcase/settings-updates.png" alt="Settings showing a new version ready to download" width="620" /><br />
+<sub><b>Updates</b> · new versions download and install from inside the app</sub>
+
+<br /><br />
+
+<img src="resources/showcase/settings-storage.png" alt="Settings listing where DAXIL stores files" width="620" /><br />
+<sub><b>Storage</b> · every file location, one click to open</sub>
+
+<br /><br />
+
 <table>
   <tr>
-    <td align="center"><img src="resources/showcase/theme-mint.png" alt="Mint theme" width="420" /><br /><sub>Mint</sub></td>
-    <td align="center"><img src="resources/showcase/theme-rose.png" alt="Rose theme" width="420" /><br /><sub>Rose</sub></td>
+    <td align="center"><img src="resources/showcase/theme-mint.png" alt="Mint theme" width="440" /><br /><sub>Mint</sub></td>
+    <td align="center"><img src="resources/showcase/theme-rose.png" alt="Rose theme" width="440" /><br /><sub>Rose</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="resources/showcase/theme-mist.png" alt="Mist theme" width="420" /><br /><sub>Mist</sub></td>
-    <td align="center"><img src="resources/showcase/theme-linen.png" alt="Linen theme" width="420" /><br /><sub>Linen</sub></td>
+    <td align="center"><img src="resources/showcase/theme-mist.png" alt="Mist theme" width="440" /><br /><sub>Mist</sub></td>
+    <td align="center"><img src="resources/showcase/theme-linen.png" alt="Linen theme" width="440" /><br /><sub>Linen</sub></td>
   </tr>
 </table>
 
@@ -115,8 +113,10 @@ Runs entirely on your machine.
 Get the installer for your platform from [Releases](https://github.com/andrewporasl/DAXIL/releases):
 
 - Windows: `DAXIL-<version>-win-x64.exe`
-- macOS (Apple Silicon): `DAXIL-<version>-mac-arm64.dmg`
+- macOS (Apple Silicon): `DAXIL-<version>-mac-arm64.dmg` (see the note below)
 - Linux: `DAXIL-<version>-linux-x86_64.AppImage`
+
+> **macOS:** the Mac build is having trouble packaging right now, so 0.4.0 ships for Windows and Linux only. A Mac download will follow in a patch release (0.4.x) as soon as it's sorted out. Thanks for your patience!
 
 Builds are unsigned: on macOS use right-click → Open (or **System Settings → Privacy & Security → Open Anyway**); on Windows, confirm the SmartScreen prompt. More in [docs/INSTALLATION.md](docs/INSTALLATION.md).
 

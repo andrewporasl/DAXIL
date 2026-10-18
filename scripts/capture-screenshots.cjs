@@ -204,6 +204,13 @@ app.whenReady().then(async () => {
     await mouse('mouseReleased', toX, toY)
     await key('z', { ctrlKey: true })
 
+    // Clip properties for the selected picture-in-picture clip, with its own speed and a gain boost.
+    await waitFor(() => js('Boolean(document.querySelector(".clip-properties"))'), 'clip properties did not show')
+    await js(`Array.from(document.querySelectorAll('[aria-label="Clip speed"] button')).find(b => b.textContent === '1.5×').click()`)
+    await waitFor(() => js('document.querySelectorAll(".clip-speed").length === 1'), 'speed badge did not show')
+    await shoot('clip-properties.png', '.inspector-section', 2)
+    await key('z', { ctrlKey: true })
+
     // Inspector: Compression + Export.
     await shoot('inspector.png', '.inspector', 2)
     await js(`document.querySelector('.panel-inspector').scrollTop = 99999`)
