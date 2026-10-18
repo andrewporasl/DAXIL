@@ -40,7 +40,10 @@ try {
   for (let i = 0; i < 50; i++) { if (await call('Boolean(window.electronAPI)')) break; await new Promise(resolve => setTimeout(resolve, 100)) }
   const metadata = await call(`window.electronAPI.getMetadata(${JSON.stringify(input)})`)
   assert.equal(metadata.width, 160)
-  const options = { mode: 'video', inputPath: input, outputPath: output, outputDir: work, outputFileName: 'split', compressionLevel: '50', muteAudio: false, hasAudio: true, trim: { enabled: false, startSeconds: 0, endSeconds: 2 }, clips: [{ id: 'tail', startSeconds: 1, endSeconds: 2 }, { id: 'head', startSeconds: 0, endSeconds: 1 }] }
+  const clip = (id, startSeconds, endSeconds, timelineStart) => ({ id, mediaId: 'src', kind: 'video', track: 0, timelineStart, startSeconds, endSeconds, x: 0, y: 0, scale: 1, opacity: 1, volume: 1, muted: false })
+  const options = { mode: 'video', inputPath: input, outputPath: output, outputDir: work, outputFileName: 'split', compressionLevel: '50', muteAudio: false, hasAudio: true, trim: { enabled: false, startSeconds: 0, endSeconds: 2 }, crop: { enabled: false, x: 0, y: 0, width: 0, height: 0 }, media: [{ id: 'src', kind: 'video', metadata }], project: { width: 160, height: 90, fps: 30 },
+    // The second half first, then the first half, on V1.
+    clips: [clip('tail', 1, 2, 0), clip('head', 0, 1, 1)] }
   const measured = await call(`window.electronAPI.measureExport(${JSON.stringify(options)})`)
   assert.ok(measured > 0)
   await call(`window.electronAPI.runFFmpeg(${JSON.stringify(options)})`)

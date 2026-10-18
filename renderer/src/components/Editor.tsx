@@ -2,10 +2,16 @@ import React, { useRef, useState, useEffect, useLayoutEffect, useCallback } from
 import type { Clip, CropSelection, MediaAsset, Project } from '@shared/types'
 import { formatDuration } from '../lib/sizeEstimator'
 import Icon from './Icon'
+import { CropStrip, TextStrip, TransformStrip } from './ToolStrip'
+import CanvasMenu from './CanvasMenu'
+import { LINK_SITE_GROUPS } from '../lib/linkSites'
 import Tracks, { rowHeight, ROW_GAP } from './Tracks'
-import { clipEnd, clipLength, clipsAt, FULL_FRAME, PIP_FRAME, primaryClipAt, snapTargets, snapTime, sourceTimeAt, timelineEnd, trackCount, trimEdge, type Placement } from '../lib/edit'
+import { clipEnd, clipLength, clipsAt, FULL_FRAME, maxTrackShift, PIP_FRAME, primaryClipAt, snapTargets, snapTime, snapToCanvas, sourceDuration, sourceTimeAt, timelineEnd, trackCount, trimEdge, type Placement } from '../lib/edit'
+import { drawText, layoutText } from '../lib/text'
+import { resumePreviewAudio, setPreviewGain } from '../lib/audioGain'
+import { clipSpeed } from '@shared/exportPlan'
 import { assetName } from '../lib/media'
-import { anchoredScrollLeft, clampZoom, formatRulerTime, maxZoom, MEDIA_MIME, parseMediaIds, rectsIntersect, rulerStep, wheelZoomFactor } from '../lib/timeline'
+import { anchoredScrollLeft, clampZoom, formatRulerTime, maxZoom, MEDIA_MIME, MIN_ZOOM, parseMediaIds, rectsIntersect, rulerStep, timelineHeadroom, visibleSpan, wheelZoomFactor } from '../lib/timeline'
 
 export type SelectMode = 'replace' | 'toggle' | 'range' | 'preserve' | 'add'
 
@@ -30,6 +36,7 @@ interface Props {
   onSplit: () => void
   onRemoveSelected: () => void
   onDuplicate: () => void
+  onAddText: () => void
   onUndo: () => void
   onRedo: () => void
   onInsertMedia: (ids: string[], placement: Placement) => void
@@ -37,16 +44,23 @@ interface Props {
   onToggleVideoTrack: (track: number) => void
   onToggleAudioTrack: (track: number) => void
   onCropChange: (crop: CropSelection) => void
+  onProjectChange: (project: Project) => void
   onPlaybackRateChange: (rate: number) => void
   onImport: () => void
   mediaPanel: React.ReactNode
+  /** Playable stand-ins for sources Chromium can't decode, keyed by the original file path. */
+  previewPaths?: Record<string, string>
   inspector: React.ReactNode
   timelineHeight: number
   onTimelineHeightChange: (height: number) => void
 }
 
 interface DisplayBounds { left: number; top: number; width: number; height: number }
-interface CropDragState { target: 'move' | 'resize'; startClientX: number; startClientY: number; crop: CropSelection }
+type CropCorner = 'nw' | 'ne' | 'sw' | 'se'
+type CropDragTarget = 'move' | CropCorner
+interface CropDragState { target: CropDragTarget; startClientX: number; startClientY: number; crop: CropSelection }
+const CROP_CORNERS: CropCorner[] = ['nw', 'ne', 'sw', 'se']
+const MIN_CROP = 32
 interface Marquee { pointerId: number; x: number; y: number; currentX: number; currentY: number; additive: boolean; active: boolean }
 interface ClipGesture {
   pointerId: number
@@ -72,8 +86,8 @@ const clamp = (value: number, low: number, high: number) => Math.max(low, Math.m
 
 // One video clip in the preview, kept in step with the timeline clock. Video clips carry
 // their own sound unless muted. Elements mount a second early so the next cut has buffered.
-function VideoLayer({ clip, asset, bounds, frameAspect, time, playing, rate, muted, selected, onPointerDown, onResizeDown }: {
-  clip: Clip; asset?: MediaAsset; bounds: DisplayBounds; frameAspect: number; time: number; playing: boolean; rate: number; muted: boolean; selected: boolean
+function VideoLayer({ clip, asset, previewPath, bounds, frameAspect, time, playing, rate, muted, selected, onPointerDown, onResizeDown }: {
+  clip: Clip; asset?: MediaAsset; previewPath?: string; bounds: DisplayBounds; frameAspect: number; time: number; playing: boolean; rate: number; muted: boolean; selected: boolean
   onPointerDown: (event: React.PointerEvent<HTMLElement>) => void; onResizeDown: (event: React.PointerEvent<HTMLElement>) => void
 }) {
   const ref = useRef<HTMLVideoElement>(null)
@@ -81,9 +95,9 @@ function VideoLayer({ clip, asset, bounds, frameAspect, time, playing, rate, mut
   useEffect(() => {
     const video = ref.current
     if (!video) return
-    const target = clip.startSeconds + clamp(time - clip.timelineStart, 0, clipLength(clip))
-    video.playbackRate = rate
-    video.volume = Math.min(1, clip.volume)
+    const target = clip.startSeconds + clamp(time - clip.timelineStart, 0, clipLength(clip)) * clipSpeed(clip)
+    video.playbackRate = clamp(rate * clipSpeed(clip), 0.0625, 16)
+    setPreviewGain(video, clip.volume)
     video.muted = muted || clip.muted
     if (!playing || !active) { video.pause(); if (Math.abs(video.currentTime - target) > 0.05) video.currentTime = target; return }
     if (Math.abs(video.currentTime - target) > 0.2) video.currentTime = target
@@ -97,16 +111,54 @@ function VideoLayer({ clip, asset, bounds, frameAspect, time, playing, rate, mut
     : { left: bounds.left + clip.x * bounds.width, top: bounds.top + clip.y * bounds.height, width: clip.scale * bounds.width, height: clip.scale * bounds.width * aspect, opacity: clip.opacity, visibility: active ? 'visible' : 'hidden' }
   return <div className={`layer${selected ? ' is-selected' : ''}${full ? ' is-full' : ''}`} data-id={clip.id} style={style} onPointerDown={onPointerDown}
     title={`${assetName(asset, 'Video')} · V${clip.track + 1} · drag to move, corner to resize`}>
-    <video ref={ref} playsInline preload="auto" className={full ? 'layer-video is-contain' : 'layer-video'} src={asset ? `safe-file://video?path=${encodeURIComponent(asset.metadata.filePath)}` : undefined} />
+    <video ref={ref} playsInline preload="auto" crossOrigin="anonymous" className={full ? 'layer-video is-contain' : 'layer-video'} src={asset ? `safe-file://video?path=${encodeURIComponent(previewPath ?? asset.metadata.filePath)}` : undefined} />
     {selected && <div className="layer-resize-handle" onPointerDown={onResizeDown} />}
   </div>
 }
 
+// Text measuring doesn't need a visible canvas.
+let measureContext: CanvasRenderingContext2D | null = null
+const measurer = () => measureContext ??= document.createElement('canvas').getContext('2d')
+
+// Text clips under the playhead, drawn with the same code that renders them for export,
+// plus an invisible box over each one to grab it.
+function TextOverlay({ clips, bounds, selectedIds, onPointerDown, onDoubleClick }: {
+  clips: Clip[]; bounds: DisplayBounds; selectedIds: string[]
+  onPointerDown: (event: React.PointerEvent<HTMLElement>, clip: Clip) => void; onDoubleClick: (clip: Clip) => void
+}) {
+  const ref = useRef<HTMLCanvasElement>(null)
+  useLayoutEffect(() => {
+    const canvas = ref.current
+    const ctx = canvas?.getContext('2d')
+    if (!canvas || !ctx) return
+    const ratio = window.devicePixelRatio || 1
+    const width = Math.round(canvas.clientWidth * ratio), height = Math.round(canvas.clientHeight * ratio)
+    if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height }
+    ctx.clearRect(0, 0, width, height)
+    ctx.save()
+    ctx.translate(bounds.left * ratio, bounds.top * ratio)
+    for (const clip of clips) drawText(ctx, clip, bounds.width * ratio, bounds.height * ratio)
+    ctx.restore()
+  })
+  const ctx = measurer()
+  return <>
+    <canvas ref={ref} className="text-canvas" aria-hidden="true" />
+    {ctx && clips.map(clip => {
+      const box = layoutText(ctx, clip, bounds.width, bounds.height)
+      if (!box) return null
+      return <div key={clip.id} className={`layer-text${selectedIds.includes(clip.id) ? ' is-selected' : ''}`} data-id={clip.id}
+        style={{ left: bounds.left + box.left, top: bounds.top + box.top, width: box.width, height: box.height }}
+        onPointerDown={event => onPointerDown(event, clip)} onClick={event => event.stopPropagation()} onDoubleClick={event => { event.stopPropagation(); onDoubleClick(clip) }}
+        title={`${clip.text?.content ?? 'Text'} · T${clip.track + 1} · drag to move, double-click to edit`} />
+    })}
+  </>
+}
+
 export default function Editor({
   project, media, clips, selectedIds, hiddenVideoTracks, mutedAudioTracks, muteAudio, crop, currentTime, playbackRate, canUndo, canRedo,
-  onClipsChange, onSelect, onMarqueeSelect, onClearSelection, onTimeUpdate, onSplit, onRemoveSelected, onDuplicate, onUndo, onRedo,
-  onInsertMedia, onDropFiles, onToggleVideoTrack, onToggleAudioTrack, onCropChange, onPlaybackRateChange, onImport,
-  mediaPanel, inspector, timelineHeight, onTimelineHeightChange
+  onClipsChange, onSelect, onMarqueeSelect, onClearSelection, onTimeUpdate, onSplit, onRemoveSelected, onDuplicate, onAddText, onUndo, onRedo,
+  onInsertMedia, onDropFiles, onToggleVideoTrack, onToggleAudioTrack, onCropChange, onProjectChange, onPlaybackRateChange, onImport,
+  mediaPanel, inspector, timelineHeight, onTimelineHeightChange, previewPaths = {}
 }: Props) {
   const previewRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -127,8 +179,12 @@ export default function Editor({
   const [displayBounds, setDisplayBounds] = useState<DisplayBounds | null>(null)
   const displayBoundsRef = useRef<DisplayBounds | null>(null)
   const cropDragRef = useRef<CropDragState | null>(null)
-  const [cropDragging, setCropDragging] = useState<'move' | 'resize' | null>(null)
+  const [cropDragging, setCropDragging] = useState<CropDragTarget | null>(null)
+  const [tool, setTool] = useState<'transform' | 'crop' | null>(null)
   const [layerDraft, setLayerDraft] = useState<Clip | null>(null)
+  // A drag in the preview ends with a click on the frame; that click must not toggle playback.
+  const draggedLayer = useRef(false)
+  const [canvasGuides, setCanvasGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null })
   const layerDragRef = useRef<{ clip: Clip; mode: 'move' | 'resize'; startX: number; startY: number; next: Clip } | null>(null)
   const gestureRef = useRef<ClipGesture | null>(null)
   const [gestureDraft, setGestureDraft] = useState<{ clips: Record<string, Clip>; snapped: number | null; trimming: Clip | null } | null>(null)
@@ -140,16 +196,33 @@ export default function Editor({
   const frameAspect = frameHeight / frameWidth
   const fps = project?.fps || 30
   const duration = timelineEnd(clips)
-  const axisSpan = Math.max(duration, 1)
+  // The timeline's scale only grows on its own. Shortening or deleting clips never re-zooms it;
+  // Fit (\ or the zoom label) re-fits to the clips plus headroom. Export still ends at the last clip.
+  const [spanFloor, setSpanFloor] = useState(0)
+  const axisSpan = clips.length ? Math.max(timelineHeadroom(duration), spanFloor) : timelineHeadroom(0)
+  useEffect(() => { setSpanFloor(floor => clips.length ? Math.max(floor, axisSpan) : 0) }, [axisSpan, clips.length])
   const displayClips = gestureDraft ? clips.map(clip => gestureDraft.clips[clip.id] ?? clip) : layerDraft ? clips.map(clip => clip.id === layerDraft.id ? layerDraft : clip) : clips
-  const renderSpan = Math.max(axisSpan, timelineEnd(displayClips))
+  const renderSpan = visibleSpan(axisSpan, zoom, timelineEnd(displayClips))
   // Rows are laid out from the committed clips so a drag can't grow the track list under the pointer.
+  // Text rows only appear once there is text, plus one spare row to drag onto.
+  const textTracks = clips.some(clip => clip.kind === 'text') ? Array.from({ length: trackCount(clips, 'text') }, (_, i) => i).reverse() : []
   const videoTracks = Array.from({ length: trackCount(clips, 'video') }, (_, i) => i).reverse()
   const audioTracks = Array.from({ length: trackCount(clips, 'audio') }, (_, i) => i)
   const selectedClips = clips.filter(clip => selectedIds.includes(clip.id))
   const hasProject = Boolean(project)
+  const selectedVideo = selectedClips.length === 1 && selectedClips[0].kind === 'video' ? selectedClips[0] : null
+  const selectedText = selectedClips.length === 1 && selectedClips[0].kind === 'text' ? selectedClips[0] : null
+  const focusText = () => setTimeout(() => { const box = document.querySelector<HTMLTextAreaElement>('.text-strip-content'); box?.focus(); box?.select() }, 0)
+  const toggleTool = (next: 'transform' | 'crop') => {
+    if (next === 'crop' && tool !== 'crop' && !crop.enabled) {
+      // Start a little inside the frame so the corners are easy to grab.
+      const width = Math.round(frameWidth * 0.8 / 2) * 2, height = Math.round(frameHeight * 0.8 / 2) * 2
+      onCropChange({ enabled: true, width, height, x: Math.round((frameWidth - width) / 2), y: Math.round((frameHeight - height) / 2) })
+    }
+    setTool(tool === next ? null : next)
+  }
   const assetFor = (clip: Clip) => media.find(asset => asset.id === clip.mediaId)
-  const sourceLength = (clip: Clip) => assetFor(clip)?.metadata.durationSeconds ?? clip.endSeconds
+  const sourceLength = (clip: Clip) => sourceDuration(clip, media)
 
   // ---------- playback clock ----------
   const setTime = useCallback((time: number) => onTimeUpdate(clamp(time, 0, Math.max(0, timelineEnd(clips)))), [clips, onTimeUpdate])
@@ -168,7 +241,7 @@ export default function Editor({
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
   }, [isPlaying, playbackRate, clips, onTimeUpdate])
-  const togglePlayback = useCallback(() => { if (duration > 0) setIsPlaying(playing => !playing) }, [duration])
+  const togglePlayback = useCallback(() => { if (duration > 0) { resumePreviewAudio(); setIsPlaying(playing => !playing) } }, [duration])
   useEffect(() => { if (duration <= 0) setIsPlaying(false) }, [duration])
   const seekBy = (delta: number) => setTime(currentTime + delta)
 
@@ -192,6 +265,9 @@ export default function Editor({
   }
   const changeZoomRef = useRef(changeZoom)
   changeZoomRef.current = changeZoom
+  const fitTimeline = () => { setSpanFloor(0); changeZoom(1) }
+  const fitTimelineRef = useRef(fitTimeline)
+  fitTimelineRef.current = fitTimeline
   useLayoutEffect(() => {
     const anchor = pendingAnchor.current
     const viewport = viewportRef.current
@@ -279,7 +355,7 @@ export default function Editor({
     observer.observe(preview)
     return () => observer.disconnect()
   }, [project, frameWidth, frameHeight])
-  const startCropDrag = (event: React.MouseEvent<HTMLDivElement>, target: 'move' | 'resize') => {
+  const startCropDrag = (event: React.MouseEvent<HTMLDivElement>, target: CropDragTarget) => {
     event.preventDefault(); event.stopPropagation()
     cropDragRef.current = { target, startClientX: event.clientX, startClientY: event.clientY, crop }
     setCropDragging(target)
@@ -297,9 +373,14 @@ export default function Editor({
         const y = clamp(Math.round(drag.crop.y + dy), 0, frameHeight - drag.crop.height)
         onCropChange({ ...drag.crop, enabled: true, x, y })
       } else {
-        const width = clamp(Math.round(drag.crop.width + dx), 32, frameWidth - drag.crop.x)
-        const height = clamp(Math.round(drag.crop.height + dy), 32, frameHeight - drag.crop.y)
-        onCropChange({ ...drag.crop, enabled: true, width, height })
+        // Drag the grabbed corner; the opposite corner stays pinned.
+        const { x: x0, y: y0, width: w0, height: h0 } = drag.crop
+        let left = x0, top = y0, right = x0 + w0, bottom = y0 + h0
+        if (drag.target.includes('w')) left = clamp(Math.round(x0 + dx), 0, right - MIN_CROP)
+        else right = clamp(Math.round(x0 + w0 + dx), left + MIN_CROP, frameWidth)
+        if (drag.target.includes('n')) top = clamp(Math.round(y0 + dy), 0, bottom - MIN_CROP)
+        else bottom = clamp(Math.round(y0 + h0 + dy), top + MIN_CROP, frameHeight)
+        onCropChange({ enabled: true, x: left, y: top, width: right - left, height: bottom - top })
       }
     }
     const onUp = () => { cropDragRef.current = null; setCropDragging(null) }
@@ -326,11 +407,35 @@ export default function Editor({
       const dy = (event.clientY - drag.startY) / bounds.height
       const asset = assetFor(drag.clip)?.metadata
       const aspect = asset && asset.width > 0 ? asset.height / asset.width : frameAspect
+      // Edges and centres snap to the canvas edges and centre lines; hold Alt to place freely.
+      const tolX = event.altKey ? 0 : SNAP_PIXELS / bounds.width, tolY = event.altKey ? 0 : SNAP_PIXELS / bounds.height
+      let guides: { x: number | null; y: number | null } = { x: null, y: null }
       let next: Clip
-      if (drag.mode === 'move') {
+      if (drag.clip.kind === 'text') {
+        // Text is placed by its centre; snapping uses its drawn box.
+        const box = measurer() && layoutText(measurer()!, drag.clip, bounds.width, bounds.height)
+        const w = box ? box.width / bounds.width : 0, h = box ? box.height / bounds.height : 0
+        const x = drag.clip.x + dx, y = drag.clip.y + dy
+        const sx = snapToCanvas(x - w / 2, w, tolX), sy = snapToCanvas(y - h / 2, h, tolY)
+        guides = { x: sx.guide, y: sy.guide }
+        next = { ...drag.clip, x: clamp(x + sx.offset, 0, 1), y: clamp(y + sy.offset, 0, 1) }
+      } else if (drag.mode === 'move') {
         const h = drag.clip.scale * aspect / frameAspect
-        next = { ...drag.clip, x: clamp(drag.clip.x + dx, -drag.clip.scale * 0.9, 1 - drag.clip.scale * 0.1), y: clamp(drag.clip.y + dy, -h * 0.9, 1 - h * 0.1) }
-      } else next = { ...drag.clip, scale: clamp(drag.clip.scale + dx, 0.05, 1) }
+        const sx = snapToCanvas(drag.clip.x + dx, drag.clip.scale, tolX), sy = snapToCanvas(drag.clip.y + dy, h, tolY)
+        guides = { x: sx.guide, y: sy.guide }
+        next = { ...drag.clip, x: clamp(drag.clip.x + dx + sx.offset, -drag.clip.scale * 0.9, 1 - drag.clip.scale * 0.1), y: clamp(drag.clip.y + dy + sy.offset, -h * 0.9, 1 - h * 0.1) }
+      } else {
+        // Resizing grows from the top-left corner: snap the right or bottom edge, whichever is closer.
+        const ratio = aspect / frameAspect
+        let scale = clamp(drag.clip.scale + dx, 0.05, 1)
+        const right = snapTime(drag.clip.x + scale, [0.5, 1], tolX), bottom = snapTime(drag.clip.y + scale * ratio, [0.5, 1], tolY)
+        const rightGap = right.snapped === null ? Infinity : Math.abs(right.time - drag.clip.x - scale) * bounds.width
+        const bottomGap = bottom.snapped === null ? Infinity : Math.abs(bottom.time - drag.clip.y - scale * ratio) * bounds.height
+        if (rightGap <= bottomGap && right.snapped !== null) { scale = right.time - drag.clip.x; guides = { x: right.snapped, y: null } }
+        else if (bottom.snapped !== null) { scale = (bottom.time - drag.clip.y) / ratio; guides = { x: null, y: bottom.snapped } }
+        next = { ...drag.clip, scale: clamp(scale, 0.05, 1) }
+      }
+      setCanvasGuides(current => current.x === guides.x && current.y === guides.y ? current : guides)
       drag.next = next
       setLayerDraft(next)
     }
@@ -338,8 +443,10 @@ export default function Editor({
       const drag = layerDragRef.current
       layerDragRef.current = null
       setLayerDraft(null)
+      setCanvasGuides({ x: null, y: null })
       if (!drag) return
       const { next, clip } = drag
+      draggedLayer.current = next.x !== clip.x || next.y !== clip.y || next.scale !== clip.scale
       if (next.x !== clip.x || next.y !== clip.y || next.scale !== clip.scale) onClipsChange(clips.map(item => item.id === clip.id ? next : item))
     }
     document.addEventListener('pointermove', move)
@@ -400,13 +507,15 @@ export default function Editor({
     if (g.edge) {
       const asset = assetFor(g.clip)
       const original = g.edge === 'start' ? g.clip.startSeconds : g.clip.endSeconds
-      let sourceTime = original + dt
+      // Timeline seconds become source seconds at the clip's own speed.
+      const speed = clipSpeed(g.clip)
+      let sourceTime = original + dt * speed
       if (!noSnap) {
         const edgeTime = g.edge === 'start' ? g.clip.timelineStart + dt : clipEnd(g.clip) + dt
         const snap = snapTime(edgeTime, snapTargets(clips, [g.clip.id], currentTime), tolerance)
-        if (snap.snapped !== null) { sourceTime = original + (snap.time - (g.edge === 'start' ? g.clip.timelineStart : clipEnd(g.clip))); snapped = snap.snapped }
+        if (snap.snapped !== null) { sourceTime = original + (snap.time - (g.edge === 'start' ? g.clip.timelineStart : clipEnd(g.clip))) * speed; snapped = snap.snapped }
       }
-      draft[g.clip.id] = trimEdge(g.clip, g.edge, sourceTime, asset?.metadata.durationSeconds ?? g.clip.endSeconds, asset?.metadata.fps || fps)
+      draft[g.clip.id] = trimEdge(g.clip, g.edge, sourceTime, sourceLength(g.clip), asset?.metadata.fps || fps)
     } else {
       const moving = clips.filter(clip => g.ids.includes(clip.id))
       const earliest = Math.min(...moving.map(clip => clip.timelineStart))
@@ -421,7 +530,7 @@ export default function Editor({
       }
       const row = rowAt(clientX, clientY)
       const lowest = Math.min(...moving.filter(clip => clip.kind === g.clip.kind).map(clip => clip.track))
-      const trackShift = row && row.kind === g.clip.kind ? Math.max(-lowest, row.track - g.clip.track) : 0
+      const trackShift = row && row.kind === g.clip.kind ? Math.min(maxTrackShift(clips, g.ids, g.clip.kind), Math.max(-lowest, row.track - g.clip.track)) : 0
       for (const clip of moving) draft[clip.id] = { ...clip, timelineStart: Math.max(0, clip.timelineStart + shift), track: clip.kind === g.clip.kind ? clip.track + trackShift : clip.track }
     }
     g.draft = draft
@@ -532,7 +641,7 @@ export default function Editor({
     const sourceTime = sourceTimeAt(target, currentTime)
     if (sourceTime === null) return
     const asset = media.find(item => item.id === target.mediaId)
-    const next = trimEdge(target, edge, sourceTime, asset?.metadata.durationSeconds ?? target.endSeconds, asset?.metadata.fps || fps)
+    const next = trimEdge(target, edge, sourceTime, sourceDuration(target, media), asset?.metadata.fps || fps)
     if (next.startSeconds === target.startSeconds && next.endSeconds === target.endSeconds) return
     onSelect(target.id, 'replace')
     onClipsChange(clips.map(clip => clip.id === target.id ? next : clip))
@@ -544,7 +653,8 @@ export default function Editor({
     onClipsChange(clips.map(clip => {
       if (!selectedIds.includes(clip.id)) return clip
       const lowest = Math.min(...selectedClips.filter(item => item.kind === clip.kind).map(item => item.track))
-      return { ...clip, timelineStart: Math.max(0, clip.timelineStart + shift), track: Math.max(0, clip.track + Math.max(-lowest, dTrack)) }
+      const up = Math.min(maxTrackShift(clips, selectedIds, clip.kind), Math.max(-lowest, dTrack))
+      return { ...clip, timelineStart: Math.max(0, clip.timelineStart + shift), track: Math.max(0, clip.track + up) }
     }))
   }
   const canSplit = clipsAt(clips, currentTime).some(clip => currentTime - clip.timelineStart >= 0.1 && clipEnd(clip) - currentTime >= 0.1)
@@ -558,11 +668,12 @@ export default function Editor({
       else if (k.toLowerCase() === 'i' || k.toLowerCase() === 'o') { event.preventDefault(); markTrim(k.toLowerCase() === 'i' ? 'start' : 'end') }
       else if (k === '=' || k === '+') { event.preventDefault(); changeZoomRef.current(zoomRef.current * ZOOM_STEP) }
       else if (k === '-' || k === '_') { event.preventDefault(); changeZoomRef.current(zoomRef.current / ZOOM_STEP) }
-      else if (k === '\\') { event.preventDefault(); changeZoomRef.current(1) }
+      else if (k === '\\') { event.preventDefault(); fitTimelineRef.current() }
       else if (k === 'ArrowLeft' || k === 'ArrowRight') {
         if (!selectedIds.length) { event.preventDefault(); setTime(currentTime + (k === 'ArrowLeft' ? -1 : 1) * (event.shiftKey ? 10 : 1) / fps); return }
         event.preventDefault(); nudge((k === 'ArrowLeft' ? -1 : 1) * (event.shiftKey ? 10 : 1) / fps, 0)
       } else if ((k === 'ArrowUp' || k === 'ArrowDown') && selectedIds.length) { event.preventDefault(); nudge(0, k === 'ArrowUp' ? 1 : -1) }
+      else if (k.toLowerCase() === 't' && hasProject) { event.preventDefault(); setIsPlaying(false); setTool(current => current === 'crop' ? null : current); onAddText(); focusText() }
       else if (k === 'Escape') { if (openMenu) setOpenMenu(null); else onClearSelection() }
       else if (k === 'Home') { event.preventDefault(); setTime(0) }
       else if (k === 'End') { event.preventDefault(); setTime(duration) }
@@ -600,6 +711,9 @@ export default function Editor({
   const layers = displayBounds ? displayClips
     .filter(clip => clip.kind === 'video' && !hiddenVideoTracks.includes(clip.track) && currentTime >= clip.timelineStart - 1 && currentTime < clipEnd(clip) + 1)
     .sort((a, b) => a.track - b.track || a.timelineStart - b.timelineStart) : []
+  const texts = displayBounds ? displayClips
+    .filter(clip => clip.kind === 'text' && currentTime >= clip.timelineStart - 1e-6 && currentTime < clipEnd(clip) - 1e-6)
+    .sort((a, b) => a.track - b.track || a.timelineStart - b.timelineStart) : []
   const menuClip = openMenu?.clip ?? (selectedClips.length === 1 ? selectedClips[0] : null)
   const toolbarDisabled = !hasProject
   const trimming = gestureDraft?.trimming ?? null
@@ -610,42 +724,57 @@ export default function Editor({
       <aside className="panel panel-media">{mediaPanel}</aside>
 
       <section className="panel panel-preview">
-        <div ref={previewRef} className="video-preview-frame" onClick={() => { if (hasProject) togglePlayback() }}>
+        <div ref={previewRef} className={`video-preview-frame${hasProject ? '' : ' is-empty'}`} onClick={() => { if (draggedLayer.current) { draggedLayer.current = false; return } if (hasProject) togglePlayback() }}>
           {!hasProject && <div className="preview-empty" onClick={event => event.stopPropagation()}>
             <div className="preview-empty-mark"><Icon name="video" size={26} /></div>
             <div className="preview-empty-title">Drop video or audio anywhere</div>
-            <div className="surface-note">Or paste a YouTube / X link, or import from the media pool.</div>
+            <div className="surface-note">Or paste a link from almost any video, social or music site.</div>
+            <div className="preview-empty-sites">{LINK_SITE_GROUPS.flatMap(group => group.sites).slice(0, 8).map(site => <span key={site}>{site}</span>)}<span>+ 1,000 more</span></div>
             <button className="btn-primary" onClick={onImport}><Icon name="plus" size={14} /><span>Import media</span></button>
           </div>}
           {displayBounds && <div className="frame-mask" style={{ left: displayBounds.left, top: displayBounds.top, width: displayBounds.width, height: displayBounds.height }} />}
-          {displayBounds && layers.map(clip => <VideoLayer key={clip.id} clip={clip} asset={assetFor(clip)} bounds={displayBounds} frameAspect={frameAspect}
+          {displayBounds && layers.map(clip => <VideoLayer key={clip.id} clip={clip} asset={assetFor(clip)} previewPath={previewPaths[assetFor(clip)?.metadata.filePath ?? '']} bounds={displayBounds} frameAspect={frameAspect}
             time={currentTime} playing={isPlaying} rate={playbackRate} muted={muteAudio} selected={selectedIds.includes(clip.id)}
             onPointerDown={event => startLayerDrag(event, clip, 'move')} onResizeDown={event => startLayerDrag(event, clip, 'resize')} />)}
+          {displayBounds && texts.length > 0 && <TextOverlay clips={texts} bounds={displayBounds} selectedIds={selectedIds}
+            onPointerDown={(event, clip) => startLayerDrag(event, clip, 'move')} onDoubleClick={clip => { onSelect(clip.id, 'replace'); focusText() }} />}
+          {displayBounds && layerDraft && canvasGuides.x !== null && <div className="canvas-guide is-vertical" style={{ left: displayBounds.left + canvasGuides.x * displayBounds.width, top: displayBounds.top, height: displayBounds.height }} />}
+          {displayBounds && layerDraft && canvasGuides.y !== null && <div className="canvas-guide is-horizontal" style={{ top: displayBounds.top + canvasGuides.y * displayBounds.height, left: displayBounds.left, width: displayBounds.width }} />}
           {trimming && <output className="trim-timecode">{trimming.startSeconds.toFixed(2)} – {trimming.endSeconds.toFixed(2)}</output>}
           {cropBoxStyle && (
-            <div className="crop-overlay-layer">
-              <div className={`crop-box ${cropDragging ? 'is-dragging' : ''}`} onMouseDown={event => startCropDrag(event, 'move')} onClick={event => event.stopPropagation()} style={cropBoxStyle}>
+            <div className={`crop-overlay-layer${tool === 'crop' ? '' : ' is-passive'}`}>
+              <div className="crop-shade" style={{ clipPath: `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${cropBoxStyle.left}px ${cropBoxStyle.top}px, ${cropBoxStyle.left}px ${cropBoxStyle.top + cropBoxStyle.height}px, ${cropBoxStyle.left + cropBoxStyle.width}px ${cropBoxStyle.top + cropBoxStyle.height}px, ${cropBoxStyle.left + cropBoxStyle.width}px ${cropBoxStyle.top}px, ${cropBoxStyle.left}px ${cropBoxStyle.top}px)` }} />
+              <div className={`crop-box ${cropDragging ? 'is-dragging' : ''}`} onMouseDown={event => startCropDrag(event, 'move')} onClick={event => event.stopPropagation()} style={cropBoxStyle} title="Drag to move crop">
                 <div className="crop-grid" />
-                <div className="crop-resize-handle" onMouseDown={event => startCropDrag(event, 'resize')} title="Resize crop" />
+                {cropBoxStyle.width > 110 && <span className="crop-label">{Math.round(crop.width)} × {Math.round(crop.height)}</span>}
+                {CROP_CORNERS.map(corner => <div key={corner} className={`crop-handle crop-handle-${corner}`} onMouseDown={event => startCropDrag(event, corner)} title="Resize crop" />)}
               </div>
             </div>
           )}
-          {hasProject && !isPlaying && duration > 0 && !trimming && (
+          {hasProject && !isPlaying && duration > 0 && !trimming && !cropBoxStyle && (
             <button className="preview-play" onClick={event => { event.stopPropagation(); togglePlayback() }} aria-label="Play preview" title={currentTime > 0 ? 'Resume' : 'Play'}><Icon name="play" size={22} /></button>
           )}
         </div>
 
+        {hasProject && tool !== 'crop' && selectedText && <TextStrip clip={selectedText} onChange={replaceClip} />}
+        {hasProject && tool === 'transform' && !selectedText && <TransformStrip clip={selectedVideo} onChange={next => onClipsChange(clips.map(clip => clip.id === next.id ? next : clip))} />}
+        {hasProject && tool === 'crop' && <CropStrip crop={crop} frameWidth={frameWidth} frameHeight={frameHeight} onChange={onCropChange} />}
         <div className="timeline-toolbar" ref={toolbarRef} role="toolbar" aria-label="Timeline editing">
           <button className="icon-button is-primary" onClick={togglePlayback} disabled={toolbarDisabled} aria-label={isPlaying ? 'Pause' : 'Play'} title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}><Icon name={isPlaying ? 'pause' : 'play'} size={15} /></button>
           <button className="icon-button" onClick={() => seekBy(-5)} disabled={toolbarDisabled} aria-label="Back five seconds" title="Back 5 seconds"><Icon name="skip-back" size={15} /></button>
           <button className="icon-button" onClick={() => seekBy(5)} disabled={toolbarDisabled} aria-label="Forward five seconds" title="Forward 5 seconds"><Icon name="skip-forward" size={15} /></button>
-          <span className="timeline-time"><b>{formatDuration(currentTime)}</b> / {formatDuration(duration)}</span>
+          <span className="timeline-time"><b>{formatDuration(currentTime)}</b><span className="timeline-time-total"> / {formatDuration(duration)}</span></span>
           <span className="timeline-divider" />
           <button className="icon-button" onClick={() => markTrim('start')} disabled={toolbarDisabled || !clipsAt(clips, currentTime, 'video').length} aria-label="Set in point" title="Set in point (I)"><Icon name="mark-in" size={15} /></button>
           <button className="icon-button" onClick={() => markTrim('end')} disabled={toolbarDisabled || !clipsAt(clips, currentTime, 'video').length} aria-label="Set out point" title="Set out point (O)"><Icon name="mark-out" size={15} /></button>
           <button className="icon-button" onClick={onSplit} disabled={!canSplit} aria-label="Split" title="Split at playhead (S)"><Icon name="scissors" size={15} /></button>
           <button className="icon-button" onClick={onRemoveSelected} disabled={!selectedIds.length} aria-label="Remove clip" title="Remove selected (Delete)"><Icon name="trash" size={15} /></button>
           <button className="icon-button" onClick={event => { const r = event.currentTarget.getBoundingClientRect(); setOpenMenu(openMenu ? null : { x: r.left, y: r.top - 6, up: true, clip: null }) }} disabled={!selectedIds.length} aria-label="Clip actions" title="More clip actions" aria-expanded={Boolean(openMenu)}>⋯</button>
+          <span className="timeline-divider" />
+          <button className={`tool-button${tool === 'transform' ? ' is-on' : ''}`} onClick={() => toggleTool('transform')} disabled={toolbarDisabled} aria-pressed={tool === 'transform'} title="Move, resize and fade the selected clip"><Icon name="move" size={14} /><span>Transform</span></button>
+          <button className={`tool-button${tool === 'crop' ? ' is-on' : ''}${crop.enabled ? ' has-crop' : ''}`} onClick={() => toggleTool('crop')} disabled={toolbarDisabled} aria-pressed={tool === 'crop'} title={crop.enabled ? `Crop: ${crop.width} × ${crop.height}` : 'Crop the frame'}><Icon name="crop" size={14} /><span>Crop</span></button>
+          <button className="tool-button" onClick={() => { setIsPlaying(false); setTool(current => current === 'crop' ? null : current); onAddText(); focusText() }} disabled={toolbarDisabled} title="Add a text overlay at the playhead (T)"><Icon name="text" size={14} /><span>Text</span></button>
+          <CanvasMenu project={project} media={media} disabled={toolbarDisabled} onChange={next => { setTool(current => current === 'crop' ? null : current); onProjectChange(next) }} />
           <span className="timeline-toolbar-spacer" />
           <button className="icon-button" onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" aria-label="Undo edit">↶</button>
           <button className="icon-button" onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo edit">↷</button>
@@ -654,8 +783,8 @@ export default function Editor({
             {SPEED_OPTIONS.map(rate => <option key={rate} value={rate}>{rate}×</option>)}
           </select>
           <div className="timeline-zoom-controls">
-            <button className="icon-button" onClick={() => changeZoom(zoom / ZOOM_STEP)} disabled={zoom <= 1 || toolbarDisabled} aria-label="Zoom out" title="Zoom out (−)">−</button>
-            <button className="timeline-zoom" onClick={() => changeZoom(1)} disabled={toolbarDisabled} title="Fit timeline (\) · Ctrl + wheel or pinch to zoom">{zoom < 10 ? zoom.toFixed(1) : Math.round(zoom)}×</button>
+            <button className="icon-button" onClick={() => changeZoom(zoom / ZOOM_STEP)} disabled={zoom <= MIN_ZOOM + 1e-6 || toolbarDisabled} aria-label="Zoom out" title="Zoom out (−)">−</button>
+            <button className="timeline-zoom" onClick={fitTimeline} disabled={toolbarDisabled} title="Fit timeline (\) · Ctrl + wheel or pinch to zoom">{zoom < 1 ? zoom.toFixed(2) : zoom < 10 ? zoom.toFixed(1) : Math.round(zoom)}×</button>
             <button className="icon-button" onClick={() => changeZoom(zoom * ZOOM_STEP)} disabled={zoom >= maxZoom(axisSpan) || toolbarDisabled} aria-label="Zoom in" title="Zoom in (=)">+</button>
           </div>
         </div>
@@ -669,6 +798,12 @@ export default function Editor({
           <div className="track-headers-clip">
             <div ref={headersRef} className="track-headers">
               <div className="track-header track-header-ruler" style={{ height: RULER_HEIGHT }} />
+              {textTracks.length > 0 && <div className="track-headers-group">
+                {textTracks.map(track => {
+                  const used = clips.some(clip => clip.kind === 'text' && clip.track === track)
+                  return <div key={`t${track}`} className={`track-header${used ? '' : ' is-empty'}`} style={{ height: rowHeight('text') + ROW_GAP }}><span>T{track + 1}</span></div>
+                })}
+              </div>}
               <div className="track-headers-group">
                 {videoTracks.map(track => {
                   const used = clips.some(clip => clip.kind === 'video' && clip.track === track)
@@ -714,12 +849,17 @@ export default function Editor({
               if (ids.length) onInsertMedia(ids, placement)
             }}>
             <div style={{ width: `calc(${zoom * 100 * renderSpan / axisSpan}% + ${zoom > 1 ? END_PAD : 0}px)` }}>
-              <div ref={contentRef} className="timeline-content" style={{ width: `calc(100% - ${zoom > 1 ? END_PAD : 0}px)` }}>
+              <div ref={contentRef} className="timeline-content" data-span={renderSpan} style={{ width: `calc(100% - ${zoom > 1 ? END_PAD : 0}px)` }}>
                 <div className="timeline-ruler" style={{ height: RULER_HEIGHT, '--minor': `${Math.max(4, step * pixelsPerSecond / 5)}px` } as React.CSSProperties}
                   onPointerDown={startScrub} onPointerMove={moveScrub} onPointerUp={endScrub} onPointerCancel={endScrub}>
                   {ticks.map(tick => <span key={tick} className="timeline-tick" style={{ left: `${tick / renderSpan * 100}%` }}>{formatRulerTime(tick, step)}</span>)}
                 </div>
                 {clips.length === 0 && <div className="timeline-empty-hint">{hasProject ? 'Drop clips on any track' : 'Drop video or audio here, or paste a link'}</div>}
+                {textTracks.length > 0 && <Tracks kind="text" tracks={textTracks} clips={displayClips.filter(clip => clip.kind === 'text')} media={media} span={renderSpan} selectedIds={selectedIds}
+                  disabledTracks={[]} draggingIds={gestureDraft && !gestureDraft.trimming ? Object.keys(gestureDraft.clips) : []} dropHint={laneGhost}
+                  time={currentTime} playing={isPlaying} rate={playbackRate} muteAll={muteAudio}
+                  onClipPointerDown={onClipPointerDown} onClipDoubleClick={() => focusText()}
+                  onClipContextMenu={(clip, x, y) => { if (!selectedIds.includes(clip.id)) onSelect(clip.id, 'replace'); setOpenMenu({ x, y, up: false, clip }) }} />}
                 <Tracks kind="video" tracks={videoTracks} clips={displayClips.filter(clip => clip.kind === 'video')} media={media} span={renderSpan} selectedIds={selectedIds}
                   disabledTracks={hiddenVideoTracks} draggingIds={gestureDraft && !gestureDraft.trimming ? Object.keys(gestureDraft.clips) : []} dropHint={laneGhost}
                   time={currentTime} playing={isPlaying} rate={playbackRate} muteAll={muteAudio}
@@ -728,6 +868,7 @@ export default function Editor({
                   disabledTracks={mutedAudioTracks} draggingIds={gestureDraft && !gestureDraft.trimming ? Object.keys(gestureDraft.clips) : []} dropHint={laneGhost}
                   time={currentTime} playing={isPlaying} rate={playbackRate} muteAll={muteAudio}
                   onClipPointerDown={onClipPointerDown} onClipContextMenu={(clip, x, y) => { if (!selectedIds.includes(clip.id)) onSelect(clip.id, 'replace'); setOpenMenu({ x, y, up: false, clip }) }} />
+                {duration > 0 && <div className="timeline-end" style={{ left: `${duration / renderSpan * 100}%` }} title="End of export: the last clip" />}
                 {gestureDraft?.snapped !== null && gestureDraft?.snapped !== undefined && <div className="timeline-snap" style={{ left: `${gestureDraft.snapped / renderSpan * 100}%` }} />}
                 <div className="timeline-playhead" style={{ left: `${playPct}%` }} />
                 {marquee?.active && <div className="timeline-marquee" style={{ left: Math.min(marquee.x, marquee.currentX), top: Math.min(marquee.y, marquee.currentY), width: Math.abs(marquee.currentX - marquee.x), height: Math.abs(marquee.currentY - marquee.y) }} />}
@@ -737,12 +878,13 @@ export default function Editor({
         </div>
         {openMenu && <div className="timeline-popover timeline-actions" role="menu" style={{ left: openMenu.x, top: openMenu.y, transform: openMenu.up ? 'translateY(-100%)' : undefined }}>
           <button role="menuitem" onClick={() => { onDuplicate(); setOpenMenu(null) }}>Duplicate</button>
-          <button role="menuitem" aria-label="Reset trim" disabled={!menuClip} onClick={() => { if (menuClip) replaceClip({ ...menuClip, startSeconds: 0, endSeconds: sourceLength(menuClip) }); setOpenMenu(null) }}>Reset trim</button>
+          {menuClip?.kind === 'text' && <button role="menuitem" onClick={() => { onSelect(menuClip.id, 'replace'); setOpenMenu(null); focusText() }}>Edit text</button>}
+          {menuClip?.kind !== 'text' && <button role="menuitem" aria-label="Reset trim" disabled={!menuClip} onClick={() => { if (menuClip) replaceClip({ ...menuClip, startSeconds: 0, endSeconds: sourceLength(menuClip) }); setOpenMenu(null) }}>Reset trim</button>}
           {menuClip?.kind === 'video' && <>
             <button role="menuitem" onClick={() => { editSelected(clip => clip.kind === 'video' ? { ...clip, ...FULL_FRAME } : clip); setOpenMenu(null) }}>Fill frame</button>
             <button role="menuitem" onClick={() => { editSelected(clip => clip.kind === 'video' ? { ...clip, ...PIP_FRAME } : clip); setOpenMenu(null) }}>Picture-in-picture</button>
           </>}
-          <button role="menuitem" onClick={() => { editSelected(clip => ({ ...clip, muted: !(menuClip?.muted ?? false) })); setOpenMenu(null) }}>{menuClip?.muted ? 'Unmute' : 'Mute'}</button>
+          {menuClip?.kind !== 'text' && <button role="menuitem" onClick={() => { editSelected(clip => clip.kind === 'text' ? clip : { ...clip, muted: !(menuClip?.muted ?? false) }); setOpenMenu(null) }}>{menuClip?.muted ? 'Unmute' : 'Mute'}</button>}
           <span className="timeline-menu-divider" />
           <button role="menuitem" onClick={() => { onRemoveSelected(); setOpenMenu(null) }}>Remove</button>
         </div>}

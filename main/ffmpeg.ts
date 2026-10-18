@@ -3,7 +3,7 @@ import { spawn, ChildProcess } from 'child_process'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
-import type { CropSelection, ExportOptions, FFmpegEvent } from '../shared/types'
+import type { Clip, CropSelection, ExportOptions, FFmpegEvent } from '../shared/types'
 import { buildTimelineGraph } from './ffmpegGraph.ts'
 import { timelineSpan } from '../shared/exportPlan.ts'
 
@@ -216,7 +216,14 @@ export function buildClipFFmpegArgs(
   const frameWidth = even(options.project?.width || videoWidth || 1280)
   const frameHeight = even(options.project?.height || videoHeight || 720)
   const fps = options.project?.fps || options.media?.find(asset => asset.metadata.filePath === options.inputPath)?.metadata.fps || 30
-  const graph = buildTimelineGraph(options, inputFor, frameWidth, frameHeight, fps, primary.audioCodec, options.mode !== 'audio', plan.audio)
+  // Each text image is looped for exactly as long as its clip.
+  const textInputFor = (clip: Clip, length: number) => {
+    const file = options.textImages?.[clip.id]
+    if (!file || file.startsWith('data:')) throw new Error('Text could not be prepared for export.')
+    args.push('-loop', '1', '-framerate', String(fps), '-t', length.toFixed(3), '-i', file)
+    return paths.push(file) - 1
+  }
+  const graph = buildTimelineGraph(options, inputFor, frameWidth, frameHeight, fps, primary.audioCodec, options.mode !== 'audio', plan.audio, textInputFor)
   const filters = [...graph.filters]
   const composite = graph.video
   const atempo = buildAtempoChain(rate)
@@ -357,7 +364,37 @@ export async function gifPreview(
   return 'data:image/gif;base64,' + data.toString('base64')
 }
 
-export function runFFmpeg(
+// Text arrives from the renderer as PNG data URLs; FFmpeg needs files. They live for one run.
+function writeTextImages(options: ExportOptions): { options: ExportOptions; cleanup: () => void } {
+  const images = Object.entries(options.textImages ?? {})
+  if (!images.length) return { options, cleanup: () => {} }
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'daxil-text-'))
+  const textImages: Record<string, string> = {}
+  images.forEach(([id, url], index) => {
+    const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(url)
+    if (!match) return
+    const file = path.join(directory, `text${index}.png`)
+    fs.writeFileSync(file, Buffer.from(match[1], 'base64'))
+    textImages[id] = file
+  })
+  return { options: { ...options, textImages }, cleanup: () => fs.rmSync(directory, { recursive: true, force: true }) }
+}
+
+export async function runFFmpeg(
+  options: ExportOptions,
+  fileSizeBytes: number,
+  durationSeconds: number,
+  videoWidth: number,
+  videoHeight: number,
+  ffmpegPath: string,
+  onEvent: ProgressSender
+): Promise<string> {
+  const prepared = writeTextImages(options)
+  try { return await runPrepared(prepared.options, fileSizeBytes, durationSeconds, videoWidth, videoHeight, ffmpegPath, onEvent) }
+  finally { prepared.cleanup() }
+}
+
+function runPrepared(
   options: ExportOptions,
   fileSizeBytes: number,
   durationSeconds: number,

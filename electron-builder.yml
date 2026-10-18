@@ -1,6 +1,13 @@
 appId: com.daxil.videoeditor
 productName: DAXIL
 artifactName: DAXIL-${version}-${os}-${arch}.${ext}
+# Where installed copies look for updates. With --publish never this only writes the
+# latest*.yml files and app-update.yml; the release workflow uploads them to the GitHub Release.
+publish:
+  provider: github
+  owner: andrewporasl
+  repo: DAXIL
+  releaseType: release
 directories:
   output: dist
   buildResources: resources

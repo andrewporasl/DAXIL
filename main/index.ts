@@ -1,7 +1,10 @@
 import { app, BrowserWindow, ipcMain, protocol } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
-import { registerIpcHandlers } from './ipc'
+import { checkUpdatesOnStartup, registerIpcHandlers } from './ipc'
+import { initUpdater } from './updater'
+import { discardAllFor, discardEverything, sweepStaleDownloads } from './tempDownloads'
+import { discardProxies, sweepStaleProxies } from './previewProxy'
 
 function getMimeType(filePath: string): string {
   const ext = path.extname(filePath).toLowerCase()
@@ -21,7 +24,7 @@ function enqueueStreamChunk(controller: ReadableStreamDefaultController<Uint8Arr
 }
 
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'safe-file', privileges: { secure: true, standard: true, stream: true, supportFetchAPI: true } }
+  { scheme: 'safe-file', privileges: { secure: true, standard: true, stream: true, supportFetchAPI: true, corsEnabled: true } }
 ])
 
 function createWindow(): void {
@@ -31,7 +34,8 @@ function createWindow(): void {
     minWidth: 900,
     minHeight: 600,
     title: 'DAXIL',
-    backgroundColor: '#0f0f13',
+    backgroundColor: '#10131a',
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
@@ -41,6 +45,11 @@ function createWindow(): void {
   })
 
   win.setMenuBarVisibility(false)
+  // Show once the first frame (already in the saved theme) is painted, not the blank window.
+  win.once('ready-to-show', () => win.show())
+  // Closing a window ends its project, so its link downloads go with it.
+  const ownerId = win.webContents.id
+  win.on('closed', () => discardAllFor(ownerId))
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -92,7 +101,9 @@ app.whenReady().then(() => {
               'Content-Range': `bytes ${start}-${end}/${total}`,
               'Accept-Ranges': 'bytes',
               'Content-Length': String(chunkSize),
-              'Content-Type': mimeType
+              'Content-Type': mimeType,
+              // Lets the preview route sound through Web Audio for clip boosts (see renderer/src/lib/audioGain.ts).
+              'Access-Control-Allow-Origin': '*'
             }
           })
         }
@@ -112,7 +123,8 @@ app.whenReady().then(() => {
         headers: {
           'Accept-Ranges': 'bytes',
           'Content-Length': String(total),
-          'Content-Type': mimeType
+          'Content-Type': mimeType,
+          'Access-Control-Allow-Origin': '*'
         }
       })
     } catch {
@@ -121,6 +133,9 @@ app.whenReady().then(() => {
   })
 
   registerIpcHandlers()
+  initUpdater(checkUpdatesOnStartup)
+  sweepStaleDownloads()
+  sweepStaleProxies()
   ipcMain.handle('window:new', () => {
     createWindow()
   })
@@ -130,6 +145,8 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+
+app.on('will-quit', () => { discardEverything(); discardProxies() })
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

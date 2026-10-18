@@ -17,7 +17,7 @@ const HEIGHT = 900
 
 app.setPath('userData', path.join(work, 'profile'))
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
-protocol.registerSchemesAsPrivileged([{ scheme: 'safe-file', privileges: { secure: true, standard: true, stream: true, supportFetchAPI: true } }])
+protocol.registerSchemesAsPrivileged([{ scheme: 'safe-file', privileges: { secure: true, standard: true, stream: true, supportFetchAPI: true, corsEnabled: true } }])
 
 function render(name, source, seconds, extra = []) {
   const file = path.join(work, name)
@@ -52,14 +52,26 @@ app.whenReady().then(async () => {
     let imports = 0
     ipcMain.handle('dialog:open-media', () => ++imports === 1 ? [main] : [pip, audio, second])
     ipcMain.handle('dialog:open-file', () => main)
-    ipcMain.handle('settings:get', () => ({ defaultOutputDir: path.join(os.homedir(), 'Videos'), ffmpegPath: 'auto', ffprobePath: 'auto', ytDlpPath: 'auto', downloadDir: path.join(os.homedir(), 'Videos', 'DAXIL Downloads') }))
+    ipcMain.handle('settings:get', () => ({ defaultOutputDir: path.join(os.homedir(), 'Videos'), ffmpegPath: 'auto', ffprobePath: 'auto', ytDlpPath: 'auto' }))
     ipcMain.handle('ffprobe:metadata', (_, file) => {
       const info = files[file]
       return { filePath: file, fileName: path.basename(file), durationSeconds: info.d, width: info.w, height: info.h, format: info.w ? 'mp4' : 'wav', videoCodec: info.w ? 'h264' : 'none', audioCodec: info.a, videoBitrate: 2_400_000, audioBitrate: 0, totalBitrate: 2_400_000, fileSizeBytes: fs.statSync(file).size, fps: 30 }
     })
     ipcMain.handle('ffmpeg:thumbnails', (_, file) => thumbs[file] ?? [])
     ipcMain.handle('ffmpeg:measure', () => 8_400_000)
+    const appData = path.join(os.homedir(), 'AppData', 'Roaming', 'DAXIL')
+    ipcMain.handle('app:storage', () => [
+      { key: 'exports', label: 'Exports (default)', path: path.join(os.homedir(), 'Videos'), note: 'Where the save dialog opens', exists: true },
+      { key: 'downloads', label: 'Link downloads (temporary)', path: path.join(os.tmpdir(), 'daxil-downloads'), note: "2 files, 38.4 MB · deleted when you're done", exists: true },
+      { key: 'scratch', label: 'Previews & size checks (temporary)', path: os.tmpdir(), note: 'daxil-preview-* and daxil-measure-* folders, removed automatically', exists: true },
+      { key: 'settings', label: 'Settings file', path: path.join(appData, 'config.json'), note: 'Your preferences', exists: true },
+      { key: 'ytdlp', label: 'yt-dlp', path: path.join(appData, 'bin', 'yt-dlp.exe'), note: 'Link downloader', exists: true },
+      { key: 'ffmpeg', label: 'FFmpeg', path: path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'DAXIL', 'resources', 'ffmpeg', 'ffmpeg.exe'), note: 'Video encoder', exists: true },
+      { key: 'ffprobe', label: 'FFprobe', path: path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'DAXIL', 'resources', 'ffmpeg', 'ffprobe.exe'), note: 'Reads media info', exists: true },
+      { key: 'appdata', label: 'App data', path: appData, note: 'Settings, yt-dlp and browser cache', exists: true }
+    ])
     ipcMain.handle('dialog:save-export', () => path.join(work, 'sunset drive_animated.gif'))
+    ipcMain.handle('convert:output-path', (_, mode, name) => path.join(work, `${name}${mode === 'gif' ? '.gif' : mode === 'audio' ? '.mp3' : '.mp4'}`))
     ipcMain.handle('ffmpeg:run', (event, options) => { setTimeout(() => event.sender.send('ffmpeg:progress', { type: 'complete', outputPath: options.outputPath, outputSizeBytes: 3_150_000 }), 300) })
     let releaseDownload
     ipcMain.handle('download:start', async event => {
@@ -72,6 +84,11 @@ app.whenReady().then(async () => {
       return { filePath: second, title: 'cellular' }
     })
     ipcMain.handle('download:cancel', () => {})
+    // Updates: quiet until the Settings shot, which shows a newer version waiting.
+    const version = require(path.join(root, 'package.json')).version
+    const nextVersion = version.replace(/(\d+)$/, patch => String(Number(patch) + 1))
+    ipcMain.handle('update:status', () => ({ state: 'none', mode: 'auto', current: version }))
+    ipcMain.handle('update:check', () => ({ state: 'none', mode: 'auto', current: version }))
     // Seeking needs byte ranges, like the real handler in main/index.ts provides.
     protocol.handle('safe-file', request => {
       const file = new URL(request.url).searchParams.get('path')
@@ -79,7 +96,7 @@ app.whenReady().then(async () => {
       const range = /bytes=(\d*)-(\d*)/.exec(request.headers.get('range') || '')
       const start = range && range[1] ? Number(range[1]) : 0
       const end = range && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1
-      const headers = { 'Content-Type': file.endsWith('.wav') ? 'audio/wav' : 'video/mp4', 'Accept-Ranges': 'bytes', 'Content-Length': String(end - start + 1) }
+      const headers = { 'Content-Type': file.endsWith('.wav') ? 'audio/wav' : 'video/mp4', 'Accept-Ranges': 'bytes', 'Content-Length': String(end - start + 1), 'Access-Control-Allow-Origin': '*' }
       if (range) headers['Content-Range'] = `bytes ${start}-${end}/${size}`
       return new Response(Readable.toWeb(fs.createReadStream(file, { start, end })), { status: range ? 206 : 200, headers })
     })
@@ -122,6 +139,9 @@ app.whenReady().then(async () => {
       await contents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 })
       await pause(150)
     }
+    const mouse = (type, x, y, buttons = 0) => contents.debugger.sendCommand('Input.dispatchMouseEvent', { type, x, y, button: type === 'mouseMoved' ? 'none' : 'left', buttons, clickCount: type === 'mouseMoved' ? 0 : 1 })
+    const key = (k, mods = {}) => js(`window.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(k)}, bubbles: true, cancelable: true, ...${JSON.stringify(mods)} })); true`)
+    const setTextValue = (selector, value, proto = 'HTMLTextAreaElement', event = 'input') => js(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); Object.getOwnPropertyDescriptor(${proto}.prototype, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event(${JSON.stringify(event)}, { bubbles: true })) })()`)
     const setTheme = theme => js(`(() => { const select = document.querySelector('.theme-select'); select.value = ${JSON.stringify(theme)}; select.dispatchEvent(new Event('change', { bubbles: true })) })()`)
 
     await window.loadFile(path.join(root, 'out/renderer/index.html'))
@@ -130,6 +150,9 @@ app.whenReady().then(async () => {
 
     // Empty state first.
     await shoot('empty.png', null, 1.1)
+    await click('.link-box-hint')
+    await shoot('link-sites.png', '.link-box', 2)
+    await click('.link-box-hint')
 
     // Load the project and build a two-track edit with audio.
     await click('[aria-label="Import media"]')
@@ -142,6 +165,22 @@ app.whenReady().then(async () => {
     await waitFor(() => js(`document.querySelectorAll('.track-video[data-track="1"] .clip-video').length === 1`), 'stack failed')
     await seek(0.3)
     await waitFor(() => js('document.querySelectorAll(".layer:not(.is-full)").length === 1'), 'overlay not visible')
+    // A title on T1, so the editor shot shows text over the stack.
+    await js('document.activeElement && document.activeElement.blur(); true')
+    await key('t')
+    await waitFor(() => js('Boolean(document.querySelector(".text-strip-content"))'), 'text clip was not added')
+    await setTextValue('.text-strip-content', 'Sunset Drive')
+    await setTextValue('.text-strip-font', 'serif', 'HTMLSelectElement', 'change')
+    await js(`Array.from(document.querySelectorAll('.text-strip .tool-segment button')).find(b => b.textContent === 'Outline').click()`)
+    await js('document.activeElement && document.activeElement.blur(); true')
+    await waitFor(() => js('document.querySelectorAll(".layer-text").length === 1'), 'title not drawn')
+    // Stretch the title across the first clip.
+    const titleClip = await rect('.clip-text .clip-trim.end')
+    await mouse('mouseMoved', titleClip.x + 3, titleClip.y + titleClip.height / 2)
+    await mouse('mousePressed', titleClip.x + 3, titleClip.y + titleClip.height / 2, 1)
+    for (let step = 1; step <= 6; step++) { await mouse('mouseMoved', titleClip.x + 3 + step * 40, titleClip.y + titleClip.height / 2, 1); await pause(16) }
+    await mouse('mouseReleased', titleClip.x + 243, titleClip.y + titleClip.height / 2)
+    await shoot('text-overlay.png', '.panel-preview', 1.5)
     // Select the stacked clip so the inspector shows its transform.
     await js(`document.querySelector('.layer:not(.is-full)').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 0, clientY: 0 })); document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))`)
     await waitFor(() => js('document.querySelector(".layer:not(.is-full)").classList.contains("is-selected")'), 'overlay not selected')
@@ -149,8 +188,24 @@ app.whenReady().then(async () => {
     await shoot('editor.png', null, 1.1)
     await shoot('timeline-stack.png', '.panel-timeline', 1.5)
 
-    // Inspector: Clip + Deliver.
-    await shoot('inspector.png', '.panel-inspector', 2)
+    // Snapping: drag the picture-in-picture layer onto the centre lines and photograph the guide mid-drag.
+    // Select it first: the selected layer draws above the others.
+    await js(`document.querySelector('.layer:not(.is-full)').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 0, clientY: 0 })); document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))`)
+    await waitFor(() => js('Boolean(document.querySelector(".layer.is-selected:not(.is-full)"))'), 'PiP layer not selected')
+    const layer = await rect('.layer.is-selected:not(.is-full)')
+    const frame = await rect('.frame-mask')
+    const lx = layer.x + layer.width / 2, ly = layer.y + layer.height / 2
+    const toX = lx + (frame.x + frame.width / 2 - layer.x) + 3, toY = ly + (frame.y + frame.height / 2 - ly) + 2
+    await mouse('mouseMoved', lx, ly)
+    await mouse('mousePressed', lx, ly, 1)
+    for (let step = 1; step <= 10; step++) { await mouse('mouseMoved', lx + (toX - lx) * step / 10, ly + (toY - ly) * step / 10, 1); await pause(16) }
+    await waitFor(() => js('document.querySelectorAll(".canvas-guide").length === 2'), `snap guides did not show: ${JSON.stringify({ layer, frame, to: [toX, toY] })}`)
+    await shoot('snap-guides.png', '.video-preview-frame', 1.5)
+    await mouse('mouseReleased', toX, toY)
+    await key('z', { ctrlKey: true })
+
+    // Inspector: Compression + Export.
+    await shoot('inspector.png', '.inspector', 2)
     await js(`document.querySelector('.panel-inspector').scrollTop = 99999`)
     await shoot('inspector-deliver.png', '.panel-inspector', 2)
     await js(`document.querySelector('.panel-inspector').scrollTop = 0`)
@@ -158,16 +213,21 @@ app.whenReady().then(async () => {
     // Link import, mid-download.
     await setInput('.link-box-input', 'https://x.com/nasa/status/1842204331043168516')
     await click('.link-box-add')
+    await waitFor(() => js('Boolean(document.querySelector(".link-modal"))'), 'link dialog did not open')
+    await shoot('link-choice.png', '.link-modal', 2)
+    await js(`document.querySelector('.link-modal button.link-choice').click()`)
     await waitFor(() => js('document.querySelector(".link-box-progress") && document.querySelector(".link-box-progress").textContent.includes("64%")'), 'download progress did not show')
     await shoot('link-import.png', '.panel-media', 2)
-    releaseDownload()
+    await waitFor(() => typeof releaseDownload === 'function', 'download did not pause')
+    releaseDownload(); releaseDownload = null
     await waitFor(() => js('document.querySelectorAll(".clip-video").length === 4 && !document.querySelector(".link-box-progress")'), 'downloaded clip was not added')
 
     // Quick GIF result.
     await setInput('.link-box-input', 'https://youtu.be/dQw4w9WgXcQ')
     await click('.link-box-gif')
     await waitFor(() => js('document.querySelector(".link-box-progress") && document.querySelector(".link-box-progress").textContent.includes("64%")'), 'second download did not progress')
-    releaseDownload()
+    await waitFor(() => typeof releaseDownload === 'function', 'download did not pause')
+    releaseDownload(); releaseDownload = null
     await waitFor(() => js('Boolean(document.querySelector(".result-panel, .export-result")) || document.body.textContent.includes("_animated.gif")'), 'quick GIF result did not appear')
     await js(`document.querySelector('.panel-inspector').scrollTop = 99999`)
     await shoot('quick-gif.png', '.panel-inspector', 2)
@@ -179,6 +239,17 @@ app.whenReady().then(async () => {
       await shoot(`theme-${theme}.png`, null, 0.5)
     }
     await setTheme('cloud')
+
+    // Settings: where everything is stored.
+    await click('[aria-label="Settings"]')
+    await js(`Array.from(document.querySelectorAll('.settings-tabs button')).find(b => b.textContent === 'Storage').click()`)
+    await waitFor(() => js('document.querySelectorAll(".storage-row").length === 4'), 'storage list did not load')
+    await shoot('settings-storage.png', '.storage-list', 2)
+    await js(`Array.from(document.querySelectorAll('.settings-tabs button')).find(b => b.textContent === 'General').click()`)
+    contents.send('update:status', { state: 'available', mode: 'auto', current: version, version: nextVersion })
+    await waitFor(() => js('Boolean(document.querySelector(".update-field .btn-primary"))'), 'update section did not show the new version')
+    await shoot('settings-updates.png', '.settings-window', 2)
+    await click('[aria-label="Close settings"]')
 
     console.log(`SCREENSHOTS OK → ${outDir}`)
     window.destroy()

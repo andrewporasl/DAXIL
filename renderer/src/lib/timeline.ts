@@ -1,5 +1,17 @@
 
-export const MIN_ZOOM = 1
+// Below 1× the strip stays full width and the visible time range grows, adding empty timeline on the right.
+export const MIN_ZOOM = 0.25
+
+// The fitted timeline always has room after the last clip: 20 % of its length, at least 3 s.
+export function timelineHeadroom(contentEnd: number): number {
+  return Math.max(1, contentEnd + Math.max(3, contentEnd * 0.2))
+}
+
+// Seconds covered by the full visible width: the fitted span, stretched when zoomed out past fit,
+// and never shorter than the clips themselves (e.g. while dragging an edge past the end).
+export function visibleSpan(axisSpan: number, zoom: number, contentEnd: number): number {
+  return Math.max(axisSpan / Math.min(zoom, 1), contentEnd)
+}
 
 // Deep enough to reach single frames on long sources without creating absurd layout widths.
 export function maxZoom(span: number): number {

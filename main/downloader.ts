@@ -10,7 +10,7 @@ type Progress = (event: DownloadProgress) => void
 let current: ChildProcess | null = null
 let fetching: Promise<string> | null = null
 
-function managedPath(): string {
+export function managedPath(): string {
   return path.join(app.getPath('userData'), 'bin', ytDlpAssetName())
 }
 

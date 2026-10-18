@@ -1,48 +1,46 @@
-import React from 'react'
+import React, { useState } from 'react'
 import type { CompletionEvent } from '@shared/types'
 import { formatBytes } from '../lib/sizeEstimator'
 import Icon from './Icon'
 
 interface Props {
   result: CompletionEvent
+  downloads: number
   onOpenFolder: () => void
   onReset: () => void
+  onDeleteDownloads: () => void
 }
 
-export default function ResultPanel({ result, onOpenFolder, onReset }: Props) {
+export default function ResultPanel({ result, downloads, onOpenFolder, onReset, onDeleteDownloads }: Props) {
+  // 'ask' until the user chooses; downloads are still deleted on window close if they keep them.
+  const [cleanup, setCleanup] = useState<'ask' | 'kept' | 'deleted'>('ask')
+  const plural = downloads === 1 ? 'clip' : 'clips'
   return (
-    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div>
-        <div className="section-title" style={{ marginBottom: 6 }}>Export Complete</div>
-        <div style={{ fontFamily: 'var(--serif)', fontSize: 28, lineHeight: 1.02, marginBottom: 4 }}>
-          Delivery ready
-        </div>
-        <div className="surface-note">
-          Final output saved locally and ready to open in Finder.
-        </div>
+    <div className="result-panel">
+      <div className="result-head">
+        <span className="result-check" aria-hidden="true">✓</span>
+        <b>Export saved</b>
+        <span className="result-size">{formatBytes(result.outputSizeBytes)}</span>
       </div>
+      <div className="result-path" title={result.outputPath}>{result.outputPath}</div>
 
-      <div className="metric-card" style={{ padding: 12 }}>
-        <span className="metric-label">Final Size</span>
-        <span className="metric-value" style={{ fontSize: 22 }}>{formatBytes(result.outputSizeBytes)}</span>
-      </div>
-
-      <div>
-        <div className="section-title" style={{ marginBottom: 6 }}>Output File</div>
-        <div className="mono-block" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-          {result.outputPath}
+      {downloads > 0 && cleanup === 'ask' && (
+        <div className="cleanup-prompt" role="group" aria-label="Downloaded clips">
+          <div className="cleanup-prompt-text">
+            <b>Delete {downloads} downloaded {plural}?</b>
+            <span>They're temporary. Keep them to export again; they're deleted when you close the window anyway.</span>
+          </div>
+          <div className="cleanup-prompt-actions">
+            <button className="btn-ghost" onClick={() => setCleanup('kept')}>Keep for now</button>
+            <button className="btn-danger" onClick={() => { onDeleteDownloads(); setCleanup('deleted') }}><Icon name="trash" size={13} /><span>Delete</span></button>
+          </div>
         </div>
-      </div>
+      )}
+      {cleanup === 'deleted' && <div className="result-note">Downloaded {plural} deleted.</div>}
 
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn-primary" onClick={onOpenFolder} style={{ flex: 1 }}>
-          <Icon name="folder" size={16} />
-          <span>Open folder</span>
-        </button>
-        <button className="btn-ghost" onClick={onReset} style={{ flex: 1 }}>
-          <Icon name="reset" size={16} />
-          <span>New export</span>
-        </button>
+      <div className="export-actions">
+        <button className="btn-ghost" onClick={onReset}><Icon name="reset" size={13} /><span>Back</span></button>
+        <button className="btn-primary" onClick={onOpenFolder}><Icon name="folder" size={13} /><span>Show file</span></button>
       </div>
     </div>
   )

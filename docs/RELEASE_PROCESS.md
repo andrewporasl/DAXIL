@@ -55,9 +55,34 @@ The release workflow is located at `.github/workflows/release.yml`. It runs when
 
 The workflow builds platform artifacts on the appropriate GitHub-hosted runners and attaches all artifacts to the GitHub Release for the tag.
 
+## Test builds without releasing
+
+To check that every platform builds before tagging, push a `release/<version>` branch (for example `release/v0.4.0`), or run the workflow by hand: **Actions → Release → Run workflow**, pick the branch. It type-checks, runs the unit tests and packages Windows, macOS and Linux, and leaves the installers as downloadable artifacts on the run. Nothing is published. With the GitHub CLI:
+
+```bash
+gh workflow run release.yml --ref <branch>
+```
+
+## In-app updates
+
+Installed copies update themselves from GitHub Releases, so users never need to revisit the releases page. Nothing extra is needed when releasing: pushing the version tag is enough.
+
+- `electron-builder.yml` has a `publish` block pointing at this repository. Packaging with `--publish never` still writes `latest.yml` (Windows), `latest-mac.yml` and `latest-linux.yml` into `dist/`, and bakes an `app-update.yml` into the app saying where to look.
+- The release workflow uploads those `latest*.yml` files and the `.blockmap` files next to the installers.
+- On start (and from **Settings → General → Updates**), the app reads the `latest*.yml` for its platform. If the version is newer, the user can download it in the background and restart to install. See `main/updater.ts`.
+- Windows installer and Linux AppImage copies install updates themselves. macOS builds are unsigned, which macOS doesn't allow to self-update, so they (and the Windows ZIP and Linux tarball) only check the latest release's version via the GitHub API and offer to open the download.
+
+Things that break updates:
+
+- **The release must be published, not a draft or pre-release.** Clients only see the latest full release.
+- **The version must go up.** The tag and `package.json` must match (the workflow checks this) and be higher than the previous release.
+- **Don't rename the installers after the build.** `latest*.yml` lists the file name and SHA-512 of each one.
+
+To test an update end to end, install release N, publish N+1, then open the installed N and press **Check now**.
+
 ## Code Signing
 
-Current release builds are unsigned. The workflow disables automatic macOS identity discovery so unsigned macOS builds package consistently in CI.
+Current release builds are unsigned. Signing the macOS build (Developer ID + notarization) would also let macOS copies install updates themselves. The workflow disables automatic macOS identity discovery so unsigned macOS builds package consistently in CI.
 
 When signing is introduced, update:
 

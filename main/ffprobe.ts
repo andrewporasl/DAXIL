@@ -13,6 +13,18 @@ function evalFraction(frac: string): number {
   return parseFloat(frac) || 0
 }
 
+// Phones store portrait video as landscape frames plus a rotation flag. FFmpeg applies the flag when
+// decoding, so report the size as displayed: swap width and height for ±90° rotations.
+export function displaySize(stream: Record<string, unknown>): { width: number; height: number } {
+  const width = (stream['width'] as number) || 0
+  const height = (stream['height'] as number) || 0
+  const tags = (stream['tags'] as Record<string, string> | undefined) ?? {}
+  const sideData = (stream['side_data_list'] as Array<Record<string, unknown>> | undefined) ?? []
+  const matrix = sideData.find(item => typeof item['rotation'] === 'number')
+  const rotation = Number(matrix?.['rotation'] ?? tags['rotate'] ?? 0)
+  return Math.abs(Math.round(rotation / 90)) % 2 === 1 ? { width: height, height: width } : { width, height }
+}
+
 export function readMetadata(filePath: string, ffprobePath = 'ffprobe'): Promise<VideoMetadata> {
   return new Promise((resolve, reject) => {
     const args = [
@@ -62,8 +74,7 @@ export function readMetadata(filePath: string, ffprobePath = 'ffprobe'): Promise
           filePath,
           fileName: path.basename(filePath),
           durationSeconds,
-          width: (videoStream['width'] as number) || 0,
-          height: (videoStream['height'] as number) || 0,
+          ...displaySize(videoStream),
           format: fmt,
           videoCodec: (videoStream['codec_name'] as string) || 'unknown',
           audioCodec: (audioStream['codec_name'] as string) || 'none',

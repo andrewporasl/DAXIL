@@ -34,14 +34,28 @@ export interface MediaAsset {
   metadata: VideoMetadata
   thumbnail?: string
   name?: string          // display name; defaults to the file name
+  temporary?: boolean    // downloaded from a link: deleted once the project is done with it
 }
 
-// Every clip on the timeline, video or audio, sits freely on a numbered track.
+// Title text. Size is a fraction of the frame height; the font is a key from the renderer's font list.
+export interface TextStyle {
+  content: string
+  font: string
+  size: number
+  color: string
+  bold: boolean
+  italic: boolean
+  align: 'left' | 'center' | 'right'
+  effect: 'none' | 'shadow' | 'outline' | 'box'
+}
+
+// Every clip on the timeline (video, audio or text) sits freely on a numbered track.
 // Video transform values are fractions of the project frame (full frame = 0, 0, 1).
+// Text clips have no media (mediaId is ''); their x/y is the centre of the text block.
 export interface Clip {
   id: string
   mediaId: string
-  kind: 'video' | 'audio'
+  kind: 'video' | 'audio' | 'text'
   track: number
   timelineStart: number
   startSeconds: number
@@ -52,6 +66,10 @@ export interface Clip {
   opacity: number
   volume: number
   muted: boolean
+  // Playback speed of this clip alone (1 = normal). Its timeline length is the source range divided
+  // by it; the project-wide speed still applies on top at export. Missing means 1.
+  speed?: number
+  text?: TextStyle
 }
 
 export interface Project {
@@ -94,6 +112,8 @@ export interface ExportOptions {
   gifScale?: GifScale
   gifFps?: GifFps
   playbackRate?: number
+  // Text clip id -> transparent full-frame PNG. The renderer sends data URLs; main swaps them for temp files.
+  textImages?: Record<string, string>
 }
 
 export interface ProgressEvent {
@@ -123,7 +143,30 @@ export interface AppSettings {
   ffprobePath: string
   ytDlpPath: string
   defaultOutputDir: string
-  downloadDir: string
+  convertOutputDir?: string   // where "Convert and save" puts files made straight from links
+  checkForUpdates?: boolean
+}
+
+// 'auto': this copy can download and install updates itself (Windows installer, Linux AppImage).
+// 'manual': it can only tell you about a new version (macOS unsigned builds, portable ZIP, tarball).
+// 'dev': running from source; updates are never installed.
+export type UpdateMode = 'auto' | 'manual' | 'dev'
+
+export interface UpdateStatus {
+  state: 'idle' | 'checking' | 'none' | 'available' | 'downloading' | 'ready' | 'error'
+  mode: UpdateMode
+  current: string
+  version?: string
+  percent?: number
+  message?: string
+}
+
+export interface StorageLocation {
+  key: string
+  label: string
+  path: string
+  note: string
+  exists: boolean
 }
 
 export interface DownloadProgress {

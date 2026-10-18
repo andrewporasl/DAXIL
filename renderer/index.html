@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DAXIL</title>
+    <script>
+      // Paint the saved theme's background before the app loads so light themes don't flash dark.
+      try {
+        var light = { mist: '#f4f7fb', sage: '#f4f8f3', blush: '#fbf5f8', linen: '#f8f4ec' }[localStorage.getItem('daxil-theme')]
+        if (light) document.documentElement.style.background = light
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

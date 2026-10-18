@@ -1,86 +1,143 @@
+<div align="center">
+
+<img src="resources/icon.png" alt="" width="88" />
+
 # DAXIL
 
-A small, fast desktop video editor in the spirit of DaVinci Resolve — media pool on the left, preview in the middle, inspector on the right, and a multi-track timeline across the bottom. Trim, stack, compress and export local video, or paste a YouTube / X link and have it land on the timeline ready to cut.
+**Desktop video editor and compressor.**<br />
+Trim, stack, crop, compress and export video, or paste a link from YouTube, TikTok, SoundCloud and 1,000+ other sites.<br />
+Runs entirely on your machine.
 
-Built with Electron, React, TypeScript and FFmpeg. Everything runs on your machine.
+[![Latest release](https://img.shields.io/github/v/release/andrewporasl/DAXIL?style=flat-square&label=release&color=8fa7ff)](https://github.com/andrewporasl/DAXIL/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/andrewporasl/DAXIL/total?style=flat-square&color=93d9be)](https://github.com/andrewporasl/DAXIL/releases)
+[![Build](https://img.shields.io/github/actions/workflow/status/andrewporasl/DAXIL/release.yml?style=flat-square&label=build)](https://github.com/andrewporasl/DAXIL/actions/workflows/release.yml)
+<br />
+[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-555?style=flat-square)](#download)
+[![Electron](https://img.shields.io/github/package-json/dependency-version/andrewporasl/DAXIL/dev/electron?style=flat-square&logo=electron&logoColor=white&color=47848f)](https://github.com/andrewporasl/DAXIL/blob/main/package.json)
+[![FFmpeg](https://img.shields.io/badge/powered%20by-FFmpeg-007808?style=flat-square&logo=ffmpeg&logoColor=white)](https://ffmpeg.org)
 
-<p align="center">
-  <img src="resources/showcase/editor.png" alt="DAXIL editor: media pool, preview with a picture-in-picture clip, inspector, and a two-track timeline" width="900" />
-</p>
 
-## Highlights
+[Download](https://github.com/andrewporasl/DAXIL/releases) · [Features](#features) · [Showcase](#showcase) · [Updates](#updates) · [Contributing](#contributing)
 
-- **Resolve-lite layout.** Media pool → preview → inspector, with the timeline spanning the full width underneath. Drag the divider to resize the timeline.
-- **Paste a link.** Drop a YouTube, X/Twitter or other video URL into the link box (or just press Ctrl+V anywhere). It downloads, joins the media pool and is added to the end of the timeline. Or press **GIF** to turn the link straight into a GIF with no editing step.
-- **Real tracks.** V1…Vn and A1…An are all free-form: place clips anywhere, leave gaps, drag clips between tracks, snap to neighbours and the playhead. Higher video tracks draw on top; drag a layer around the preview, resize it from the corner, set opacity — picture-in-picture without a filter graph in sight.
-- **Edit with your hands.** Trim by dragging clip edges (the out point stays put), split everything under the playhead, rubber-band select across tracks, drag groups, nudge with the arrow keys, undo everything.
-- **Zoom that stays put.** Ctrl+wheel or pinch zooms around the cursor; the buttons zoom around the playhead.
-- **Deliver.** MP4, silent MP4, MP3 or GIF, with bitrate-targeted compression presets, cropping, speed, and a "Check size" that encodes a real sample so the number is exact.
-- **Small install.** The Windows installer ships one FFmpeg and one FFprobe, nothing else. The link downloader (yt-dlp) is fetched on first use, not bundled.
+<br />
 
-## Tour
+<img src="resources/showcase/editor.png" alt="DAXIL editor: media pool, preview, compression and export panel, multi-track timeline" width="900" />
 
-### Import
+</div>
 
-<img src="resources/showcase/link-import.png" alt="Media pool with the link box downloading a video" width="300" align="right" />
+## Features
 
-Three ways in, all of which also work when nothing is loaded yet:
+- **Import** by dropping files, `Ctrl+I`, or pasting a link (`Ctrl+V` anywhere).
+- **Phone and pro formats.** iPhone HEVC/HDR `.mov` (portrait handled), ProRes and Motion JPEG get a temporary preview copy automatically; export always uses the original.
+- **Links** from any site [yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) supports: YouTube, TikTok, Instagram, X, Reddit, Twitch, Vimeo, SoundCloud, Bandcamp and more. Each link asks: **add to media pool** to edit it, or **convert and save** it straight to MP4, MP3 or GIF in its own folder (set in Settings). **GIF** in the link box is a one-click shortcut.
+- **Temporary downloads.** Link downloads are deleted when you remove them, close the window, or choose **Delete** after export. Imported files are never touched.
+- **Multi-track timeline.** Free-form video and audio tracks, gaps, snapping, trim, split, rubber-band select, undo.
+- **Picture-in-picture.** Higher tracks draw on top; move, resize and fade clips in the preview or with the Transform strip.
+- **Crop** with ratio presets (16:9, 1:1, 9:16, 4:5) or free-form.
+- **Canvas** of any size: landscape, portrait, square, 4:5, match a clip, or custom. Change it any time.
+- **Compression** presets from best quality to −90 %, with estimated sizes and an exact-size check.
+- **Export** MP4, silent MP4, MP3 or GIF, with speed control. **Preview 5s** renders a real sample of the export first.
+- **Small install.** Bundles FFmpeg and FFprobe only; yt-dlp is fetched on first use.
+- **Clip properties.** Select any clip, or one piece of a split clip, to see its source details and set its own speed (0.1×–16×, multiplied by the project speed), size, position, opacity and gain in dB (−40 to +12, heard live in the preview), or mute it.
+- **Text overlays.** Titles on their own text tracks with eight basic fonts, size, colour, bold/italic, alignment and shadow, outline or box styles. What you see in the preview is exactly what's exported.
+- **Snapping in the preview.** Layers and text snap to the canvas edges and centre lines, with guides (hold Alt to place freely).
+- **Copy and paste clips.** `Ctrl+C` / `Ctrl+X` / `Ctrl+V` on the timeline; pasted clips land at the playhead.
+- **Sound-only exports.** A timeline with only audio exports as MP3, and you can start a project from a song alone.
+- **Updates itself.** New versions download inside the app; see [Updates](#updates).
+- **Know where things are.** Settings lists every storage location (exports, temporary downloads, settings, tools) with a button to open each.
 
-- **Drop files anywhere** in the window. The first video becomes the project; everything else goes to the media pool. Drop onto the timeline to place clips exactly there.
-- **Import** with the `+` button or **Ctrl+I**. Multi-select works.
-- **Paste a link.** The box accepts anything [yt-dlp](https://github.com/yt-dlp/yt-dlp) can read. **Add** (or Enter) downloads and appends it to V1. **GIF** downloads and encodes the whole clip to a GIF you choose a location for.
-  Downloads are saved as `clip1.mp4`, `clip2.mp4`, … in your download folder — never the post's title or author — and show up under that name. Rename anything in the pool by double-clicking its name (or F2, or right-click → Rename); the new name follows the clip onto the timeline and into the export file name.
+## Showcase
 
-The media pool is a thumbnail grid: click, Ctrl-click or Shift-click to select several, then drag them to the timeline together, press Enter, or use the hover `+` on a tile. The hover `×`, the right-click menu or the Delete key remove an asset; if it is on the timeline you are asked first, and its clips go with it (one undo brings everything back). The badge on a tile shows how many clips use it.
+<div align="center">
 
-<br clear="right" />
+<img src="resources/showcase/timeline-stack.png" alt="Timeline with V2 stacked over V1 and an audio track" width="900" /><br />
+<sub><b>Multi-track timeline</b> · free-form video, audio and text tracks, picture-in-picture, snapping</sub>
 
-### Timeline
+<br /><br />
 
-<p align="center">
-  <img src="resources/showcase/timeline-stack.png" alt="Timeline with V2 stacked over V1 and an audio lane" width="900" />
-</p>
+<table>
+  <tr>
+    <td align="center" valign="middle" width="50%">
+      <img src="resources/showcase/text-overlay.png" alt="A title over the video with the text editing strip below the preview" width="420" /><br />
+      <sub><b>Text overlays</b><br />Eight fonts, outline, shadow or box, exported exactly as previewed</sub>
+    </td>
+    <td align="center" valign="middle" width="50%">
+      <img src="resources/showcase/snap-guides.png" alt="A picture-in-picture layer snapping to the canvas centre lines with pink guides" width="420" /><br />
+      <sub><b>Canvas snapping</b><br />Layers and text snap to edges and centre lines</sub>
+    </td>
+  </tr>
+</table>
 
-- Every track is free-form. Drop media on any row at any time; there is always one spare video track above and one spare audio track below. Gaps render black and silent.
-- **Video tracks** composite upward: V2 draws over V1, V3 over V2. A clip dropped on V2+ arrives as picture-in-picture; **Fill frame** makes it full size. The `●` next to a track name hides it from the preview and export.
-- **Audio tracks** mix together with the sound of the video clips themselves. `♫` mutes a whole track; clips can be muted individually.
-- Drag a clip sideways to move it in time, or up and down to change track. It snaps to other clips' edges and the playhead (hold Alt to bypass). Selected groups move together.
-- Drag clip edges to trim. Trimming the start keeps the out point where it is. Press **I** / **O** to trim the selected clip (or the V1 clip under the playhead) to the playhead, **S** to split everything under the playhead, **Delete** to remove.
-- Drag on empty space to rubber-band select across any tracks. Shift adds to the selection. Ctrl+A selects everything. Arrow keys nudge the selection a frame (Shift: ten); ↑/↓ move it a track.
-- Right-click a clip for Duplicate, Reset trim, Fill frame / Picture-in-picture, Mute and Remove.
-- Click or drag on the ruler to scrub. Ctrl+wheel or pinch to zoom around the cursor; a plain wheel scrolls. Drag the top edge of the timeline to resize it.
+<br />
 
-### Inspector
+<table>
+  <tr>
+    <td align="center" valign="middle" width="33%">
+      <img src="resources/showcase/inspector.png" alt="Compression and export panel" width="260" /><br />
+      <sub><b>Compression &amp; export</b><br />Presets with size estimates, MP4 / MP3 / GIF</sub>
+    </td>
+    <td align="center" valign="middle" width="33%">
+      <img src="resources/showcase/link-choice.png" alt="Link dialog: add to media pool, or convert and save as MP4, MP3 or GIF" width="260" /><br />
+      <sub><b>Paste a link</b><br />Edit it, or convert it straight to a file</sub>
+    </td>
+    <td align="center" valign="middle" width="33%">
+      <img src="resources/showcase/settings-storage.png" alt="Settings listing where DAXIL stores files" width="260" /><br />
+      <sub><b>Storage</b><br />Every file location, one click to open</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="middle" colspan="3">
+      <img src="resources/showcase/settings-updates.png" alt="Settings showing a new version ready to download" width="420" /><br />
+      <sub><b>Updates</b><br />New versions download and install from inside the app</sub>
+    </td>
+  </tr>
+</table>
 
-The right-hand panel holds only controls. Select a video clip and **Transform** appears: size, X/Y, opacity, volume, plus **Fill frame** and **Picture-in-picture**. You can also drag the clip in the preview and resize it from the bottom-right handle. Below that: **Crop**, **Compression** and **Deliver**.
+<br />
 
-<p align="center">
-  <img src="resources/showcase/inspector.png" alt="Inspector showing a clip's transform controls" width="320" />
-</p>
+<table>
+  <tr>
+    <td align="center"><img src="resources/showcase/theme-mint.png" alt="Mint theme" width="420" /><br /><sub>Mint</sub></td>
+    <td align="center"><img src="resources/showcase/theme-rose.png" alt="Rose theme" width="420" /><br /><sub>Rose</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="resources/showcase/theme-mist.png" alt="Mist theme" width="420" /><br /><sub>Mist</sub></td>
+    <td align="center"><img src="resources/showcase/theme-linen.png" alt="Linen theme" width="420" /><br /><sub>Linen</sub></td>
+  </tr>
+</table>
 
-### Deliver
+<sub>Four dark and four light themes, chosen from the header.</sub>
 
-<img src="resources/showcase/inspector-deliver.png" alt="Deliver section with format, size check, output folder and export button" width="300" align="right" />
+</div>
 
-The **Deliver** section at the bottom of the inspector is the export page.
+## Download
 
-- **Format:** MP4 with audio, silent MP4, MP3, or an animated GIF (choose width and frame rate; **Preview GIF** renders a quick sample).
-- **Compression:** five presets from high quality (CRF 18) to a 90 % size reduction. Percentages are bitrate targets, so **Check size** encodes a temporary file and reports the actual byte count. Any edit invalidates it.
-- **Crop:** toggle the crop frame and drag it in the preview, or use the sliders.
-- **Speed:** the toolbar's `1×` menu changes playback rate for the export as well.
+Get the installer for your platform from [Releases](https://github.com/andrewporasl/DAXIL/releases):
 
-Export opens a save dialog, shows progress with the FFmpeg log, and offers to open the output folder when done. The one-click **GIF** button in the link box uses the same pipeline.
+- Windows: `DAXIL-<version>-win-x64.exe`
+- macOS (Apple Silicon): `DAXIL-<version>-mac-arm64.dmg`
+- Linux: `DAXIL-<version>-linux-x86_64.AppImage`
 
-<br clear="right" />
+Builds are unsigned: on macOS use right-click → Open (or **System Settings → Privacy & Security → Open Anyway**); on Windows, confirm the SmartScreen prompt. More in [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
-### Themes
+You only need this page once: after that, DAXIL updates from inside the app.
 
-Four dark and four light themes, chosen from the header.
+## Updates
 
-| | |
+DAXIL checks for a new version a few seconds after it starts (you can turn this off) and whenever you press **Check now** in **Settings → General → Updates**. There's no need to come back to GitHub:
+
+1. When a newer version exists, a **Update available** button appears in the top bar.
+2. Click it, then **Download**. The download runs in the background while you keep editing.
+3. When it's done, click **Restart and update**. DAXIL closes, installs the new version and reopens. If you'd rather not restart now, it installs the next time you quit.
+
+| How you installed DAXIL | What happens |
 |---|---|
-| ![Mint theme](resources/showcase/theme-mint.png) | ![Rose theme](resources/showcase/theme-rose.png) |
-| ![Mist theme](resources/showcase/theme-mist.png) | ![Linen theme](resources/showcase/theme-linen.png) |
+| Windows installer (`.exe`) | Downloads and installs itself, as above. |
+| Linux AppImage | Downloads and replaces the AppImage, as above. |
+| macOS (`.dmg`) | Tells you a new version is out and opens the download. macOS only lets signed apps replace themselves, and DAXIL builds aren't signed yet. |
+| Windows ZIP or Linux tarball | Tells you a new version is out and opens the download, since these copies have no installer to update. |
+
+**How it works.** Each release on GitHub includes small `latest.yml`, `latest-mac.yml` and `latest-linux.yml` files that name the newest version and the checksum of each installer. The app reads the one for your platform with [electron-updater](https://www.electron.build/auto-update), compares versions, and downloads the new installer straight from the release. The download is checked against that checksum before anything is installed. Your projects, settings and exports are untouched by an update.
 
 ## Keyboard shortcuts
 
@@ -97,28 +154,23 @@ Four dark and four light themes, chosen from the header.
 | Home / End | Jump to the start / end |
 | Ctrl+A | Select everything on the timeline |
 | Ctrl+I | Import media |
-| Ctrl+V | Paste a video link (when not typing in a field) |
+| T | Add a text overlay at the playhead |
+| Ctrl+C / Ctrl+X | Copy / cut the selected clips |
+| Ctrl+V | Paste copied clips at the playhead, or a video link you copied (when not typing in a field) |
+| Alt while dragging | Turn off snapping |
 | = / − / \ | Zoom in / out / fit |
 | Ctrl+wheel, pinch | Zoom around the cursor |
 | Esc | Clear selection, cancel a drag or close a menu |
 
-## Installation
+## Privacy
 
-Installers and archives are published on the GitHub Releases page:
+Your media never leaves your machine. Network access is limited to fetching yt-dlp from GitHub on first use (or when you press **Update** in Settings), the links you paste, and checking GitHub Releases for a new DAXIL version (which you can turn off in Settings). The update check sends nothing about you or your files. No accounts, no telemetry.
 
-https://github.com/andrewporasl/DAXIL/releases
+## Contributing
 
-Use the asset that matches the target platform:
+Issues and pull requests are welcome. Run `npm run lint`, `npm test` and `npm run test:ui` before opening a PR; if the UI changes, regenerate the README images with `npm run screenshots`.
 
-- macOS Apple Silicon: `DAXIL-<version>-mac-arm64.dmg`
-- Windows: `DAXIL-<version>-win-x64.exe`
-- Linux: `DAXIL-<version>-linux-x86_64.AppImage`
-
-The source code archives generated by GitHub are not application installers. Platform notes, including the unsigned-build prompts, are in [docs/INSTALLATION.md](docs/INSTALLATION.md).
-
-Release builds bundle FFmpeg and FFprobe for the target platform only, so no runtime setup is needed. The first time you paste a link, DAXIL downloads the current [yt-dlp](https://github.com/yt-dlp/yt-dlp) release into its app-data folder; you can point it at your own copy, or update it, from **Settings**.
-
-## Development
+### Development
 
 Requires Node.js 18 or newer.
 
@@ -142,7 +194,7 @@ npm run package:linux    # AppImage + tar.gz
 
 Artifacts land in `dist/`. `npm run test:packaged` launches the unpacked Windows build with an isolated profile and verifies the bundled binaries, a real export and the preview protocol. Tagged releases are built by GitHub Actions; see [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md).
 
-## Architecture
+### Architecture
 
 ```text
 DAXIL/
@@ -154,6 +206,7 @@ DAXIL/
 │   ├── ffmpegGraph.ts    Pure builder: every video track composited over black, every sounding clip mixed (unit tested)
 │   ├── ffprobe.ts        Source metadata
 │   ├── downloader.ts     yt-dlp acquisition, updates and link downloads with progress
+│   ├── tempDownloads.ts  Per-window temporary download folder; deletes only files it downloaded
 │   ├── downloaderCore.ts URL validation, argv construction, progress and error parsing
 │   ├── binaries.ts       Bundled / user-overridden FFmpeg and FFprobe resolution
 │   └── output.ts         Output path validation
@@ -164,39 +217,30 @@ DAXIL/
 │   │   ├── Editor.tsx    The editing surface: layered preview, playback clock, ruler, drag/trim/snap, zoom, marquee
 │   │   ├── Tracks.tsx    Rows of free-positioned clips for video and audio tracks
 │   │   ├── MediaPool.tsx Thumbnail grid with multi-select and drag
-│   │   ├── LinkBox.tsx   Paste-a-link entry with progress
-│   │   ├── Inspector.tsx Transform, crop, compression, deliver
-│   │   ├── ExportPanel.tsx, CropPanel.tsx, CompressionPresets.tsx, ProgressPanel.tsx, ResultPanel.tsx
+│   │   ├── LinkBox.tsx   Paste-a-link entry, supported-sites list, progress
+│   │   ├── ToolStrip.tsx Transform and crop strips on the preview toolbar
+│   │   ├── CanvasMenu.tsx Canvas size: presets, match a clip, custom
+│   │   ├── PreviewModal.tsx 5-second export preview player
+│   │   ├── Inspector.tsx Compression and export
+│   │   ├── ExportPanel.tsx, CompressionPresets.tsx, ProgressPanel.tsx, ResultPanel.tsx
 │   │   └── SettingsModal.tsx
 │   └── lib/
 │       ├── edit.ts       Timeline model helpers: trim, split, move, snap, select, insert, remove
-│       └── timeline.ts   Zoom anchoring, ruler steps, drag payloads
+│       ├── timeline.ts   Zoom anchoring, ruler steps, drag payloads
+│       └── linkSites.ts  The supported-sites list shown in the app
 ├── shared/               Types and the export size plan shared by both processes
 ├── scripts/              Icon generation and README screenshot capture
 └── tests/                Node unit tests, Electron UI test, packaged smoke test
 ```
 
-## Implementation notes
+### Implementation notes
 
-- Export builds one FFmpeg filter graph: a black canvas the length of the timeline, every video clip trimmed and composited with `overlay` in track order (full-frame clips letterboxed, others scaled, `colorchannelmixer` for opacity, `enable` for its time range), and every sounding clip delayed and mixed over silence. Crop, speed and GIF palette generation apply to the composite. Measure and export share this graph, so "Check size" is exact.
+- Export builds one FFmpeg filter graph: a black canvas the length of the timeline, every video clip trimmed and composited with `overlay` in track order (full-frame clips letterboxed, others scaled, `colorchannelmixer` for opacity, `enable` for its time range), and every sounding clip delayed and mixed over silence. Crop, speed and GIF palette generation apply to the composite. Measure, preview and export share this graph, so "Get exact" is exact and the 5-second preview (the timeline sliced to that window) looks exactly like the export.
 - Playback is driven by a single clock; each visible clip is its own `<video>` layer kept within a fraction of a second of that clock, so stacked clips and gaps preview exactly as they export.
 - Compression percentages are bitrate targets derived from the source size, subject to the encoder's 200 kb/s video floor. CRF and GIF outputs have content-dependent sizes.
 - Local preview streams through a custom `safe-file://` protocol with HTTP range support so seeking works on large files and paths with spaces or `%` characters.
 - Zoom keeps an anchor time fixed on screen by correcting the scroll position in a layout effect after the new width has been committed.
 - Links are validated to `http(s)` before anything is spawned, and are passed to yt-dlp as a single argument after `--`.
-
-## Privacy
-
-DAXIL is a local desktop application. Your media never leaves your machine. The only network access is:
-
-- fetching yt-dlp from GitHub the first time you use the link box (or when you press Update in Settings), and
-- the links you choose to paste, which yt-dlp downloads directly from the site.
-
-No accounts, telemetry or hosted services.
-
-## Code signing
-
-Current public builds are unsigned. macOS may show the standard first-run warning; open the app via right-click → Open, or **System Settings → Privacy & Security → Open Anyway**. Windows SmartScreen may ask you to confirm the first launch.
 
 ## License
 

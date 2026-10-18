@@ -69,10 +69,10 @@ Release builds bundle FFmpeg and FFprobe. End users do not need to install Node.
 
 ## Link downloads (yt-dlp)
 
-Pasting a YouTube, X or other video link uses [yt-dlp](https://github.com/yt-dlp/yt-dlp). DAXIL does not bundle it. The first time you use the link box, the current release is downloaded from GitHub into the application data folder:
+Pasting a link — YouTube, TikTok, Instagram, SoundCloud or any of the 1,000+ sites it supports — uses [yt-dlp](https://github.com/yt-dlp/yt-dlp). DAXIL does not bundle it. The first time you use the link box, the current release is downloaded from GitHub into the application data folder:
 
 - Windows: `%APPDATA%\DAXIL\bin\yt-dlp.exe`
 - macOS: `~/Library/Application Support/DAXIL/bin/yt-dlp_macos`
 - Linux: `~/.config/DAXIL/bin/yt-dlp_linux`
 
-Offline machines, or anyone who prefers their own copy, can set the yt-dlp path in **Settings**. The **Update** button there runs `yt-dlp -U`. Downloaded videos go to the folder shown under **Download folder** (default: `Videos/DAXIL Downloads`).
+Offline machines, or anyone who prefers their own copy, can set the yt-dlp path in **Settings**. The **Update** button there runs `yt-dlp -U`. Downloads are temporary: they go to a DAXIL folder in your system temp directory and are deleted when you remove them from the pool, close the window, or choose **Delete** after an export.

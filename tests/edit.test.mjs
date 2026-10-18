@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { clipsAt, insertAssets, moveClips, primaryClipAt, removeMedia, selectClips, snapTargets, snapTime, splitAt, timelineEnd, trackCount, trimEdge, updateClipRange } from '../renderer/src/lib/edit.ts'
+import { clipEnd, clipLength, sourceTimeAt, clipsAt, freeTrack, snapToCanvas, insertAssets, pasteClips, sourceDuration, textClip, TEXT_SOURCE_SECONDS, moveClips, primaryClipAt, removeMedia, selectClips, snapTargets, snapTime, splitAt, timelineEnd, trackCount, trimEdge, updateClipRange } from '../renderer/src/lib/edit.ts'
+import { isNewerVersion } from '../shared/version.ts'
+import { dbToGain, gainToDb } from '../shared/exportPlan.ts'
 import { anchoredScrollLeft, clampZoom, formatRulerTime, parseMediaIds, rulerStep, wheelZoomFactor } from '../renderer/src/lib/timeline.ts'
 
 const clip = (over = {}) => ({ id: 'c', mediaId: 'a', kind: 'video', track: 0, timelineStart: 0, startSeconds: 0, endSeconds: 4, x: 0, y: 0, scale: 1, opacity: 1, volume: 1, muted: false, ...over })
@@ -89,11 +91,113 @@ test('inserting assets lays them back to back on the right kind of track', () =>
 test('zoom anchoring, ruler steps and drag payloads', () => {
   assert.equal(anchoredScrollLeft(0, 50, 2000, 10, 3, 350), 300)
   assert.equal(anchoredScrollLeft(0, 0, 1000, 10, 0, 500), 0)
-  assert.equal(clampZoom(0.2, 10), 1)
+  assert.equal(clampZoom(0.1, 10), 0.25)
   assert.ok(Math.abs(wheelZoomFactor(-100) * wheelZoomFactor(100) - 1) < 1e-12)
   assert.equal(rulerStep(100), 1)
   assert.equal(rulerStep(1000), 0.1)
   assert.equal(formatRulerTime(75, 5), '1:15')
   assert.deepEqual(parseMediaIds('["a","b"]'), ['a', 'b'])
   assert.deepEqual(parseMediaIds('abc'), ['abc'])
+})
+
+test('paste keeps spacing from the playhead and lifts each kind clear of existing clips', () => {
+  let n = 0
+  const existing = [clip({ id: 'v', timelineStart: 0, endSeconds: 10 }), clip({ id: 'm', kind: 'audio', mediaId: 's', timelineStart: 20, endSeconds: 2 })]
+  const copied = [clip({ id: 'x', timelineStart: 3, endSeconds: 2 }), clip({ id: 'y', timelineStart: 4, endSeconds: 2, kind: 'audio', mediaId: 's' })]
+  const { clips, ids } = pasteClips(existing, copied, 5, () => `p${++n}`)
+  assert.deepEqual(ids, ['p1', 'p2'])
+  const pasted = clips.filter(c => ids.includes(c.id)).map(c => [c.kind, c.track, c.timelineStart])
+  assert.deepEqual(pasted, [['video', 1, 5], ['audio', 0, 6]], 'video lifts above V1; audio fits on A1')
+  assert.equal(clips.length, 4)
+  assert.deepEqual(pasteClips(existing, [], 0, () => 'z').clips, existing)
+})
+
+test('text clips have no source limit and land on the first free text track', () => {
+  const t = textClip(0, 2, 't1')
+  assert.equal(t.kind, 'text')
+  assert.equal(t.mediaId, '')
+  assert.equal(sourceDuration(t, []), TEXT_SOURCE_SECONDS)
+  assert.equal(trimEdge(t, 'end', 30, sourceDuration(t, [])).endSeconds, 30, 'text can be stretched')
+  assert.equal(freeTrack([t], 'text', 3, 3), 1)
+  assert.equal(freeTrack([t], 'text', 5, 3), 0)
+  assert.equal(trackCount([t], 'text'), 2)
+})
+
+test('timeline span: headroom past the last clip, zooming out past fit grows the range', async () => {
+  const { timelineHeadroom, visibleSpan } = await import('../renderer/src/lib/timeline.ts')
+  assert.equal(timelineHeadroom(0), 3)
+  assert.equal(timelineHeadroom(10), 13)
+  assert.equal(timelineHeadroom(100), 120)
+  assert.equal(visibleSpan(12, 1, 8), 12, 'at fit the axis is the visible range')
+  assert.equal(visibleSpan(12, 4, 8), 12, 'zooming in scrolls; the full range stays the axis')
+  assert.equal(visibleSpan(12, 0.5, 8), 24, 'zooming out past fit shows more empty timeline')
+  assert.equal(visibleSpan(12, 1, 15), 15, 'never shorter than the clips (dragging an edge past the end)')
+})
+
+test('layers snap their nearest edge or centre to the canvas edges and centre', () => {
+  assert.deepEqual(snapToCanvas(0.01, 0.4, 0.02), { offset: -0.01, guide: 0 }, 'left edge to the left side')
+  assert.deepEqual(snapToCanvas(0.595, 0.4, 0.02).guide, 1, 'right edge to the right side')
+  const centred = snapToCanvas(0.29, 0.4, 0.02)
+  assert.equal(centred.guide, 0.5)
+  assert.ok(Math.abs(centred.offset - 0.01) < 1e-9, 'centre to the middle')
+  assert.deepEqual(snapToCanvas(0.2, 0.4, 0.02), { offset: 0, guide: null }, 'nothing near')
+  assert.deepEqual(snapToCanvas(0.01, 0.4, 0), { offset: 0, guide: null }, 'zero tolerance turns it off')
+})
+
+test('dragging up opens at most one new track above the other clips', async () => {
+  const { maxTrackShift } = await import('../renderer/src/lib/edit.ts')
+  const clips = [clip({ id: 'a', track: 0 }), clip({ id: 'b', track: 1 }), clip({ id: 't', kind: 'text', track: 0 })]
+  assert.equal(maxTrackShift(clips, ['b'], 'video'), 0, 'the top clip cannot climb onto an endless stack of new tracks')
+  assert.equal(maxTrackShift(clips, ['a'], 'video'), 2, 'a lower clip can go one above the highest other clip')
+  assert.equal(maxTrackShift([clip({ id: 'solo', track: 0 })], ['solo'], 'video'), 0, 'a lone clip stays on the bottom track')
+  assert.equal(maxTrackShift(clips, ['a', 'b'], 'video'), 0, 'a group with nothing else of its kind stays put')
+  assert.equal(maxTrackShift(clips, ['t'], 'text'), 0, 'text tracks follow the same rule')
+  assert.equal(maxTrackShift([...clips, clip({ id: 'c', track: 3 })], ['b'], 'video'), 3, 'room up to one above the highest other clip')
+})
+
+test('compactTracks closes up empty tracks so clips cannot leapfrog upward forever', async () => {
+  const { compactTracks } = await import('../renderer/src/lib/edit.ts')
+  // A on V1 and B on V2; A jumps to V3, then B jumps to V4: empty V1 and V2 would pile up below.
+  const leapt = [clip({ id: 'a', track: 2 }), clip({ id: 'b', track: 3 }), clip({ id: 'm', kind: 'audio', track: 4 })]
+  const { clips: compacted, remap } = compactTracks(leapt)
+  assert.deepEqual(compacted.map(c => [c.id, c.track]), [['a', 0], ['b', 1], ['m', 0]], 'order is kept, gaps are gone, per kind')
+  assert.equal(remap('video', 3), 1)
+  assert.equal(remap('audio', 4), 0)
+  const tidy = [clip({ id: 'a', track: 0 }), clip({ id: 'b', track: 1 })]
+  assert.equal(compactTracks(tidy).clips, tidy, 'no change returns the same array')
+})
+
+test('update checks compare release versions numerically', () => {
+  assert.equal(isNewerVersion('0.4.0', '0.3.0'), true)
+  assert.equal(isNewerVersion('v0.3.10', '0.3.9'), true, 'tags may carry a v, and 10 > 9')
+  assert.equal(isNewerVersion('0.3.0', '0.3.0'), false)
+  assert.equal(isNewerVersion('0.2.9', '0.3.0'), false)
+  assert.equal(isNewerVersion('1.0.0', '1.0.0-beta.2'), true, 'a release beats its pre-release')
+  assert.equal(isNewerVersion('1.0.0-beta.2', '1.0.0'), false)
+  assert.equal(isNewerVersion('1.0', '1.0.0'), false)
+})
+
+test('a clip with its own speed is shorter or longer on the timeline, and splits and trims stay in source time', () => {
+  const fast = clip({ id: 'f', timelineStart: 1, startSeconds: 2, endSeconds: 6, speed: 2 })
+  assert.equal(clipLength(fast), 2, '4 s of source at 2x lasts 2 s')
+  assert.equal(clipEnd(fast), 3)
+  assert.equal(sourceTimeAt(fast, 2), 4, 'one timeline second in is two source seconds in')
+  let n = 0
+  const [a, b] = splitAt([fast], 2, null, () => `n${++n}`)
+  assert.deepEqual([a.startSeconds, a.endSeconds, b.startSeconds, b.endSeconds, b.timelineStart], [2, 4, 4, 6, 2])
+  assert.equal(b.speed, 2, 'both halves keep the speed')
+  const trimmed = trimEdge(fast, 'start', 3, 10)
+  assert.equal(trimmed.timelineStart, 1.5, 'trimming 1 s of source moves the start half a timeline second')
+  assert.equal(clipEnd(trimmed), 3, 'the out point stays put')
+  const slow = clip({ endSeconds: 2, speed: 0.5 })
+  assert.equal(clipLength(slow), 4)
+})
+
+test('clip gain converts between decibels and linear volume', () => {
+  assert.equal(gainToDb(1), 0)
+  assert.ok(Math.abs(gainToDb(2) - 6.0206) < 1e-3)
+  assert.ok(Math.abs(dbToGain(-6) - 0.5012) < 1e-3)
+  assert.ok(Math.abs(dbToGain(12) - 3.981) < 1e-3)
+  assert.equal(dbToGain(-40), 0, 'the bottom of the range is silence')
+  assert.equal(gainToDb(0), -Infinity)
 })
