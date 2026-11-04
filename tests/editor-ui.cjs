@@ -39,12 +39,15 @@ app.whenReady().then(async () => {
     ipcMain.handle('ffmpeg:measure', () => 123456)
     let previewed
     ipcMain.handle('ffmpeg:video-preview', (_, options) => { previewed = options; return { path: source, sizeBytes: 54321 } })
-    ipcMain.handle('settings:get', () => ({ defaultOutputDir: work, ffmpegPath: 'auto', ffprobePath: 'auto', ytDlpPath: 'auto' }))
+    let settingsState = { defaultOutputDir: work, convertOutputDir: path.join(work, 'converted'), mp3OutputDir: '', ffmpegPath: 'auto', ffprobePath: 'auto', ytDlpPath: 'auto' }
+    ipcMain.handle('settings:get', () => ({ ...settingsState }))
+    ipcMain.handle('settings:set', (_, patch) => { settingsState = { ...settingsState, ...patch } })
+    ipcMain.handle('dialog:open-folder', () => path.join(work, 'music'))
     ipcMain.handle('ffprobe:metadata', (_, file = source) => ({ filePath: file, fileName: path.basename(file), durationSeconds: file === secondSource || isDownload(file) ? 2 : 8, width: file === audioSource ? 0 : 320, height: file === audioSource ? 0 : 180, format: 'mp4', videoCodec: 'h264', audioCodec: file === audioSource ? 'pcm_s16le' : 'none', videoBitrate: 100000, audioBitrate: 0, totalBitrate: 100000, fileSizeBytes: fs.statSync(source).size, fps: 30 }))
     ipcMain.handle('ffmpeg:thumbnails', () => ['data:image/jpeg;base64,' + thumbnail.toString('base64')])
     ipcMain.handle('dialog:save-export', () => path.join(work, 'edited.mp4'))
     ipcMain.handle('update:status', () => ({ state: 'idle', mode: 'dev', current: '0.0.0' }))
-    ipcMain.handle('convert:output-path', (_, mode, name) => path.join(work, 'converted', `${name}${mode === 'audio' ? '.mp3' : mode === 'gif' ? '.gif' : '.mp4'}`))
+    ipcMain.handle('convert:output-path', (_, mode, name) => path.join(mode === 'audio' && settingsState.mp3OutputDir ? settingsState.mp3OutputDir : path.join(work, 'converted'), `${name}${mode === 'audio' ? '.mp3' : mode === 'gif' ? '.gif' : '.mp4'}`))
     ipcMain.handle('ffmpeg:run', (event, options) => { exported = options; event.sender.send('ffmpeg:progress', { type: 'complete', outputPath: options.outputPath, outputSizeBytes: 123456 }) })
     protocol.handle('safe-file', request => {
       const file = new URL(request.url).searchParams.get('path')
@@ -351,10 +354,18 @@ app.whenReady().then(async () => {
     const linkClip = (await clipsOn('.clip-video')).find(clip => clip.track === 0 && Math.abs(clip.start - endBefore) < 0.01)
     assert.ok(linkClip, 'the link lands at the end of V1')
     exported = null
+    // Quick GIF: the name step opens straight away; a blank name keeps the generic download name.
     await setInput('.link-box-input', 'https://youtu.be/abc')
     await click('.link-box-gif')
+    await waitFor(() => js('Boolean(document.querySelector(".link-name-step"))'), 'GIF did not ask for a name')
+    assert.equal(await js('document.activeElement === document.querySelector(".link-name-input")'), true, 'the name field is focused')
+    assert.ok((await js('document.querySelector(".link-name-folder").textContent')).includes(path.join(work, 'converted')), 'GIFs show the converted-links folder')
+    assert.equal(await count('.link-name-change'), 0, 'GIF folders are not chosen here')
+    assert.equal(exported, null, 'nothing is downloaded before the name is confirmed')
+    await click('.link-name-save')
     await waitFor(() => exported, 'Quick GIF export was not requested')
     assert.equal(exported.mode, 'gif')
+    assert.equal(path.basename(exported.outputPath), 'clip2.gif', 'a blank name keeps the generic name')
     assert.equal(path.dirname(exported.outputPath), path.join(work, 'converted'), 'conversions go to their own folder, no save dialog')
     assert.deepEqual(exported.clips.map(clip => [clip.startSeconds, clip.endSeconds]), [[0, 2]], 'the whole downloaded clip becomes the GIF')
     assert.equal((await ranges()).length, beforeLink + 1, 'quick GIF does not touch the timeline')
@@ -381,24 +392,61 @@ app.whenReady().then(async () => {
     await js(`window.confirm = () => true; document.querySelector('[aria-label="Remove clip3 from pool"]').click()`)
     await waitFor(() => discarded.length === 1 && discarded[0].endsWith('download3.mp4'), `removing a download did not delete it: ${JSON.stringify(discarded)}`)
 
-    // Convert and save: straight to MP3 in the converted-links folder; the timeline is untouched. Esc cancels.
+    // Convert and save: you name the file; MP4/GIF go to the converted-links folder, MP3s to the MP3 folder.
     await js(`document.querySelector('.export-result .btn-ghost, .result-panel .btn-ghost') && document.querySelector('.export-result .btn-ghost, .result-panel .btn-ghost').click(); true`)
     const timelineBefore = (await ranges()).length
+    // Convert to MP4 with a name: auto-saves to the converted-links folder under that name.
+    exported = null
+    await setInput('.link-box-input', 'https://youtu.be/named')
+    await click('.link-box-add')
+    await waitFor(() => js('Boolean(document.querySelector(".link-modal"))'), 'the link dialog did not open')
+    await js(`document.querySelector('.link-choice-go').click()`)
+    await waitFor(() => js('Boolean(document.querySelector(".link-name-step"))'), 'Save as did not ask for a name')
+    await setInput('.link-name-input', 'funny cat')
+    await js(`document.querySelector('.link-name-input').form.requestSubmit()`)
+    await waitFor(() => exported, 'named MP4 was not requested')
+    assert.equal(exported.outputPath, path.join(work, 'converted', 'funny cat.mp4'))
+
+    // Escape on the name step closes the dialog without downloading.
+    exported = null
     await setInput('.link-box-input', 'https://soundcloud.com/someone/other')
     await click('.link-box-add')
-    await waitFor(() => js('Boolean(document.querySelector(".link-modal"))'), 'the link dialog did not open again')
+    await waitFor(() => js('Boolean(document.querySelector(".link-modal"))'), 'the link dialog did not open')
+    await js(`document.querySelector('.link-choice-go').click()`)
+    await waitFor(() => js('Boolean(document.querySelector(".link-name-step"))'), 'no name step')
     await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
-    await waitFor(() => js('!document.querySelector(".link-modal")'), 'Escape did not close the link dialog')
-    exported = null
+    await waitFor(() => js('!document.querySelector(".link-modal")'), 'Escape did not close the name step')
+    assert.equal(exported, null)
+
+    // MP3: choose a folder (remembered), name it, save there.
     await setInput('.link-box-input', 'https://soundcloud.com/someone/other')
     await click('.link-box-add')
     await waitFor(() => js('Boolean(document.querySelector(".link-modal"))'), 'the link dialog did not reopen')
     await js(`Array.from(document.querySelectorAll('[aria-label="Convert to"] button')).find(b => b.textContent === 'MP3').click()`)
     await js(`document.querySelector('.link-choice-go').click()`)
+    await waitFor(() => js('Boolean(document.querySelector(".link-name-change"))'), 'MP3 offers no folder choice')
+    await click('.link-name-change')
+    await waitFor(() => settingsState.mp3OutputDir === path.join(work, 'music'), 'the MP3 folder was not remembered')
+    await waitFor(async () => (await js('document.querySelector(".link-name-folder").textContent')).includes(path.join(work, 'music')), 'the new folder is not shown')
+    await setInput('.link-name-input', 'my song')
+    await click('.link-name-save')
     await waitFor(() => exported, 'convert to MP3 was not requested')
     assert.equal(exported.mode, 'audio')
-    assert.ok(exported.outputPath.endsWith('.mp3') && path.dirname(exported.outputPath) === path.join(work, 'converted'))
+    assert.equal(exported.outputPath, path.join(work, 'music', 'my song.mp3'))
     assert.equal((await ranges()).length, timelineBefore, 'converting does not touch the timeline')
+
+    // MP4 picked while the MP3 folder differs: the step says where a sound-only link would go. Back returns.
+    await setInput('.link-box-input', 'https://soundcloud.com/someone/third')
+    await click('.link-box-add')
+    await waitFor(() => js('Boolean(document.querySelector(".link-modal"))'), 'the link dialog did not open')
+    await js(`Array.from(document.querySelectorAll('[aria-label="Convert to"] button')).find(b => b.textContent === 'MP4').click()`)
+    await js(`document.querySelector('.link-choice-go').click()`)
+    await waitFor(() => js('Boolean(document.querySelector(".link-name-step"))'), 'no name step')
+    assert.ok((await js('document.querySelector(".link-name-step").textContent')).includes(path.join(work, 'music')), 'the MP4 step mentions where sound-only links go')
+    await js(`document.querySelector('.link-name-back').click()`)
+    await waitFor(() => js('Boolean(document.querySelector(".link-choice-go"))'), 'Back did not return to the choices')
+    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
+    await waitFor(() => js('!document.querySelector(".link-modal")'), 'Escape did not close the dialog')
 
     // Clip properties: split a clip, give one piece its own speed and gain; the other piece is untouched.
     {
@@ -521,7 +569,7 @@ app.whenReady().then(async () => {
     assert.equal(exported.mode, 'audio')
 
     fs.writeFileSync(path.join(root, 'out/editor-ui.png'), (await contents.capturePage()).toPNG())
-    console.log('UI PASS: rename, trim/undo/redo, split, cross-track drag, snapping, anchored zoom, marquee, audio tracks, pool delete cascade, slim inspector, export shape, size check, link import, quick GIF, canvas size, video preview, temporary downloads, link dialog (pool / convert), clip properties (speed, gain), text overlays, canvas snapping, copy/paste, sound-only MP3, timeline headroom, track cap')
+    console.log('UI PASS: rename, trim/undo/redo, split, cross-track drag, snapping, anchored zoom, marquee, audio tracks, pool delete cascade, slim inspector, export shape, size check, link import, quick GIF, canvas size, video preview, temporary downloads, link dialog (pool / convert), link naming, MP3 folder, clip properties (speed, gain), text overlays, canvas snapping, copy/paste, sound-only MP3, timeline headroom, track cap')
     window.destroy()
     app.exit(0)
   } catch (error) {

@@ -96,7 +96,7 @@ export default function App() {
   const [exportError, setExportError] = useState<string | null>(null)
 
   const [showSettings, setShowSettings] = useState(false)
-  const [pendingLink, setPendingLink] = useState<string | null>(null)
+  const [pendingLink, setPendingLink] = useState<{ url: string; quick?: ExportMode } | null>(null)
   const update = useUpdateStatus()
   const updateWaiting = update && (update.state === 'ready' || (update.state === 'available' && update.mode !== 'dev'))
   const [theme, setTheme] = useState<ThemeName>(() => {
@@ -340,7 +340,7 @@ export default function App() {
   // One click to GIF: download, pick a file, encode the whole clip. Nothing touches the timeline.
   // Convert a link straight to a file: download, pick where to save, encode the whole clip.
   // Nothing touches the timeline. Sound-only links always become MP3.
-  const handleLinkConvert = async (url: string, requested: ExportMode) => {
+  const handleLinkConvert = async (url: string, requested: ExportMode, name: string) => {
     if (downloading || exportState === 'running') return
     const result = await downloadFromLink(url)
     if (!result) return
@@ -351,7 +351,7 @@ export default function App() {
       const asset: MediaAsset = { id: crypto.randomUUID(), kind: hasVideo ? 'video' : 'audio', metadata: meta, thumbnail: (await window.electronAPI.getThumbnails(result.filePath, meta.durationSeconds, 1).catch(() => []))[0], name: result.title, temporary: true }
       setMedia(items => items.some(item => item.metadata.filePath === meta.filePath) ? items : [...items, asset])
       if (mode === 'gif' && meta.durationSeconds > 60 && !window.confirm(`This clip is ${formatDuration(meta.durationSeconds)} long, which makes a very large GIF. Continue?`)) return
-      const baseName = (result.title || meta.fileName.replace(/\.[^.]+$/, '')).replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'clip'
+      const baseName = (name.trim() || result.title || meta.fileName.replace(/\.[^.]+$/, '')).replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'clip'
       const ext = mode === 'audio' ? 'mp3' : mode === 'gif' ? 'gif' : 'mp4'
       const outputPath = await window.electronAPI.convertOutputPath(mode, baseName)
       setExportState('running'); setProgress(null); setFfmpegLog([]); setResult(null); setExportError(null)
@@ -368,7 +368,7 @@ export default function App() {
     }
   }
   // Every link (pasted anywhere or typed in the link box) asks first: edit it or just convert it.
-  const requestLink = (url: string) => { if (!downloading && exportState !== 'running') setPendingLink(url.trim()) }
+  const requestLink = (url: string, quick?: ExportMode) => { if (!downloading && exportState !== 'running') setPendingLink({ url: url.trim(), quick }) }
   const handleLinkAddRef = useRef(requestLink)
   handleLinkAddRef.current = requestLink
   useEffect(() => {
@@ -547,7 +547,7 @@ export default function App() {
 
   const mediaPanel = <>
     <LinkBox busy={downloading || exportState === 'running'} progress={downloadProgress} error={downloadError}
-      onAdd={requestLink} onGif={url => void handleLinkConvert(url, 'gif')} onCancel={() => void window.electronAPI.cancelDownload()} />
+      onAdd={requestLink} onGif={url => requestLink(url, 'gif')} onCancel={() => void window.electronAPI.cancelDownload()} />
     <MediaPool media={media} usage={usage} onImport={handleImportMedia} onInsert={ids => handleInsertMedia(ids)} onRemove={handleRemoveMedia} onRename={handleRenameMedia} busy={isBusy} />
     {loadingMeta && <div className="surface-note panel-note">Reading file metadata and building thumbnails…</div>}
     {preparing.length > 0 && <div className="surface-note panel-note" role="status">Preparing a preview of {preparing.join(', ')}… (this format can't play directly; export uses the original)</div>}
@@ -623,9 +623,9 @@ export default function App() {
 
       {fileDrag && <div className="file-drop-overlay" aria-hidden="true"><div><Icon name="plus" size={22} /><span>Drop to add media</span></div></div>}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
-      {pendingLink && <LinkModal url={pendingLink} defaultFormat={exportMode}
-        onPool={() => { const url = pendingLink; setPendingLink(null); void handleLinkAdd(url) }}
-        onConvert={mode => { const url = pendingLink; setPendingLink(null); void handleLinkConvert(url, mode) }}
+      {pendingLink && <LinkModal url={pendingLink.url} quick={pendingLink.quick} defaultFormat={exportMode}
+        onPool={() => { const { url } = pendingLink; setPendingLink(null); void handleLinkAdd(url) }}
+        onConvert={(mode, name) => { const { url } = pendingLink; setPendingLink(null); void handleLinkConvert(url, mode, name) }}
         onClose={() => setPendingLink(null)} />}
       {videoPreview && <PreviewModal preview={videoPreview} onClose={() => setVideoPreview(null)} onExport={() => void handleExport()} />}
       {gifPreviewUrl && (
