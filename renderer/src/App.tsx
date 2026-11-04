@@ -97,6 +97,8 @@ export default function App() {
 
   const [showSettings, setShowSettings] = useState(false)
   const [pendingLink, setPendingLink] = useState<{ url: string; quick?: ExportMode } | null>(null)
+  // A link conversion's result has nothing to do with the project's downloads, so it never offers to delete them.
+  const [resultIsConversion, setResultIsConversion] = useState(false)
   const update = useUpdateStatus()
   const updateWaiting = update && (update.state === 'ready' || (update.state === 'available' && update.mode !== 'dev'))
   const [theme, setTheme] = useState<ThemeName>(() => {
@@ -351,10 +353,11 @@ export default function App() {
       const mode: ExportMode = hasVideo ? requested : 'audio'
       const asset: MediaAsset = { id: crypto.randomUUID(), kind: hasVideo ? 'video' : 'audio', metadata: meta, name: result.title, temporary: true }
       if (mode === 'gif' && meta.durationSeconds > 60 && !window.confirm(`This clip is ${formatDuration(meta.durationSeconds)} long, which makes a very large GIF. Continue?`)) return
-      const baseName = (name.trim() || result.title || meta.fileName.replace(/\.[^.]+$/, '')).replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'clip'
+      // A typed extension ("song.mp3") is dropped; the format adds its own.
+      const baseName = (name.trim().replace(/\.(mp3|mp4|gif)$/i, '').trim() || result.title || meta.fileName.replace(/\.[^.]+$/, '')).replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'clip'
       const ext = mode === 'audio' ? 'mp3' : mode === 'gif' ? 'gif' : 'mp4'
       const outputPath = await window.electronAPI.convertOutputPath(mode, baseName)
-      setExportState('running'); setProgress(null); setFfmpegLog([]); setResult(null); setExportError(null)
+      setExportState('running'); setProgress(null); setFfmpegLog([]); setResult(null); setExportError(null); setResultIsConversion(true)
       const sound = meta.audioCodec !== 'none'
       await window.electronAPI.runFFmpeg({
         mode, inputPath: meta.filePath, outputDir, outputFileName: baseName, outputPath,
@@ -514,7 +517,7 @@ export default function App() {
       const defaultPath = outputDir ? `${outputDir}/${outputFileName}${ext}` : `${outputFileName}${ext}`
       const outputPath = await window.electronAPI.saveExportDialog(exportMode, defaultPath)
       if (!outputPath) return
-      setExportState('running'); setProgress(null); setFfmpegLog([]); setResult(null); setExportError(null)
+      setExportState('running'); setProgress(null); setFfmpegLog([]); setResult(null); setExportError(null); setResultIsConversion(false)
       await window.electronAPI.runFFmpeg(await withText({ ...exportOptions, outputFileName, outputPath }))
     } catch (error) {
       setExportError(previous => previous ?? (error instanceof Error ? error.message : String(error)))
@@ -573,7 +576,7 @@ export default function App() {
       />
       {exportState === 'running' && <ProgressPanel progress={progress} logLines={ffmpegLog} onCancel={handleCancel} exporting={true} />}
       {exportState === 'done' && result && <ResultPanel result={result} onOpenFolder={() => window.electronAPI.openFolder(result.outputPath)} onReset={handleReset}
-        downloads={downloadedMedia.length} onDeleteDownloads={handleDeleteDownloads} />}
+        downloads={resultIsConversion ? 0 : downloadedMedia.length} onDeleteDownloads={handleDeleteDownloads} />}
       {exportState === 'error' && exportError && (
         <div className="card" style={{ borderColor: 'var(--danger)' }}>
           <div className="section-title" style={{ marginBottom: 6, color: 'var(--danger)' }}>Export error</div>

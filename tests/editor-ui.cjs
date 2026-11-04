@@ -372,7 +372,14 @@ app.whenReady().then(async () => {
     assert.ok(!(await js('Array.from(document.querySelectorAll(".media-asset"), a => a.textContent).join()')).includes('clip2'), 'a conversion does not land in the media pool')
     await waitFor(() => discarded.some(file => file.endsWith('download2.mp4')), 'the converted download was not deleted')
 
-    // After export, the result panel offers to delete the (temporary) link downloads.
+    // A conversion's result never offers to delete the project's own downloads.
+    await waitFor(() => js('document.body.textContent.includes("Export saved")'), 'no result after the GIF')
+    assert.equal(await count('.cleanup-prompt'), 0, 'a conversion does not offer to delete pool downloads')
+
+    // After a project export, the result panel offers to delete the (temporary) link downloads.
+    exported = null
+    await js(`Array.from(document.querySelectorAll('.export-panel .btn-primary')).find(button => button.textContent.includes('Export')).click()`)
+    await waitFor(() => exported && exported.mode !== 'gif', 'project export was not requested')
     await waitFor(() => js('Boolean(document.querySelector(".cleanup-prompt"))'), 'no cleanup prompt after export')
     assert.ok((await js('document.querySelector(".cleanup-prompt").textContent')).includes('Delete 1 downloaded clip?'), 'only the pool download is offered for deletion')
     const poolWithDownloads = await js('document.querySelectorAll(".media-asset").length')
@@ -404,7 +411,7 @@ app.whenReady().then(async () => {
     await waitFor(() => js('Boolean(document.querySelector(".link-modal"))'), 'the link dialog did not open')
     await js(`document.querySelector('.link-choice-go').click()`)
     await waitFor(() => js('Boolean(document.querySelector(".link-name-step"))'), 'Save as did not ask for a name')
-    await setInput('.link-name-input', 'funny cat')
+    await setInput('.link-name-input', 'funny cat.MP4')
     await js(`document.querySelector('.link-name-input').form.requestSubmit()`)
     await waitFor(() => exported, 'named MP4 was not requested')
     assert.equal(exported.outputPath, path.join(work, 'converted', 'funny cat.mp4'))
@@ -427,9 +434,16 @@ app.whenReady().then(async () => {
     await js(`Array.from(document.querySelectorAll('[aria-label="Convert to"] button')).find(b => b.textContent === 'MP3').click()`)
     await js(`document.querySelector('.link-choice-go').click()`)
     await waitFor(() => js('Boolean(document.querySelector(".link-name-change"))'), 'MP3 offers no folder choice')
-    await click('.link-name-change')
+    await js(`document.querySelector('.link-name-change').focus(); document.querySelector('.link-name-change').click()`)
     await waitFor(() => settingsState.mp3OutputDir === path.join(work, 'music'), 'the MP3 folder was not remembered')
     await waitFor(async () => (await js('document.querySelector(".link-name-folder").textContent')).includes(path.join(work, 'music')), 'the new folder is not shown')
+    await waitFor(() => js('document.activeElement === document.querySelector(".link-name-input")'), 'focus did not return to the name after choosing a folder')
+    // "t" adds a text clip on the timeline; pressed anywhere in the dialog, it must not.
+    const clipsBeforeKeys = await count('.clip')
+    await js(`document.querySelector('.link-name-change').focus(); document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 't', bubbles: true }))`)
+    await pause(150)
+    assert.equal(await count('.clip'), clipsBeforeKeys, 'keys pressed in the link dialog do not edit the timeline')
+    await js(`document.querySelector('.link-name-input').focus()`)
     await setInput('.link-name-input', 'my song')
     await click('.link-name-save')
     await waitFor(() => exported, 'convert to MP3 was not requested')

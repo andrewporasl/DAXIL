@@ -26,6 +26,7 @@ export default function LinkModal({ url, defaultFormat, quick, onPool, onConvert
   const [name, setName] = useState('')
   const [dirs, setDirs] = useState<Dirs>({})
   const poolButton = useRef<HTMLButtonElement>(null)
+  const nameInput = useRef<HTMLInputElement>(null)
   useEffect(() => { if (step === 'choose') poolButton.current?.focus() }, [step])
   useEffect(() => {
     let live = true
@@ -43,13 +44,16 @@ export default function LinkModal({ url, defaultFormat, quick, onPool, onConvert
   const mp3Folder = convertDirFor('audio', dirs, '') || 'Your Downloads folder'
   const changeMp3Folder = async () => {
     const dir = await window.electronAPI.openFolderDialog()
-    if (!dir) return
-    await window.electronAPI.saveSettings({ mp3OutputDir: dir })
-    setDirs(state => ({ ...state, mp3OutputDir: dir }))
+    if (dir) {
+      await window.electronAPI.saveSettings({ mp3OutputDir: dir })
+      setDirs(state => ({ ...state, mp3OutputDir: dir }))
+    }
+    nameInput.current?.focus()
   }
 
   return <div className="settings-backdrop" onClick={onClose}>
-    <div className="link-modal" role="dialog" aria-label="What to do with this link" onClick={event => event.stopPropagation()}>
+    <div className="link-modal" role="dialog" aria-label="What to do with this link" onClick={event => event.stopPropagation()}
+      onKeyDown={event => event.stopPropagation() /* the timeline's shortcuts must not see keys typed here */}>
       <div className="settings-head">
         <div className="link-modal-title">
           <b>Download from {hostOf(url)}</b>
@@ -80,7 +84,7 @@ export default function LinkModal({ url, defaultFormat, quick, onPool, onConvert
       {step === 'name' && <form className="link-name-step" onSubmit={event => { event.preventDefault(); onConvert(format, name) }}>
         <b className="link-name-title">Name your {chosen.label}</b>
         <div className="link-name-row">
-          <input className="link-name-input" autoFocus value={name} onChange={event => setName(event.target.value)}
+          <input ref={nameInput} className="link-name-input" autoFocus value={name} onChange={event => setName(event.target.value)}
             placeholder="clip" maxLength={120} aria-label="File name" spellCheck={false} />
           <span className="link-name-ext">{chosen.ext}</span>
         </div>
