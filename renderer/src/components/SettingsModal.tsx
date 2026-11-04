@@ -11,7 +11,7 @@ type Tab = 'general' | 'storage' | 'advanced'
 
 // Storage shows only what lives outside the install folder (what an uninstall leaves behind);
 // tool and settings-file locations are under Advanced.
-const OUTSIDE_KEYS = ['appdata', 'downloads', 'scratch', 'exports', 'conversions']
+const OUTSIDE_KEYS = ['appdata', 'downloads', 'scratch', 'exports', 'conversions', 'mp3']
 const ADVANCED_KEYS = ['settings', 'ytdlp', 'ffmpeg', 'ffprobe']
 
 function StorageList({ items }: { items: StorageLocation[] }) {
@@ -89,6 +89,10 @@ export default function SettingsModal({ onClose }: Props) {
     const dir = await window.electronAPI.openFolderDialog()
     if (dir) setSettings(state => ({ ...state, convertOutputDir: dir }))
   }
+  const handlePickMp3Folder = async () => {
+    const dir = await window.electronAPI.openFolderDialog()
+    if (dir) setSettings(state => ({ ...state, mp3OutputDir: dir }))
+  }
   const pick = (keys: string[]) => keys.map(key => storage.find(item => item.key === key)).filter((item): item is StorageLocation => Boolean(item))
 
   return (
@@ -121,6 +125,14 @@ export default function SettingsModal({ onClose }: Props) {
                 <button className="icon-button" onClick={handlePickConvertFolder} aria-label="Browse converted links folder" title="Browse"><Icon name="folder" size={14} /></button>
               </div>
               <div className="settings-hint">Where <b>Convert and save</b> puts files made straight from a link, kept apart from your project exports. Existing files are never overwritten.</div>
+            </div>
+            <div className="settings-field">
+              <label>MP3 folder</label>
+              <div className="settings-input-row">
+                <input value={settings.mp3OutputDir ?? ''} onChange={event => setSettings(state => ({ ...state, mp3OutputDir: event.target.value }))} placeholder="Same as converted links folder" />
+                <button className="icon-button" onClick={handlePickMp3Folder} aria-label="Browse MP3 folder" title="Browse"><Icon name="folder" size={14} /></button>
+              </div>
+              <div className="settings-hint">Where MP3s from <b>Convert and save</b> go, for example your Spotify local files folder. Leave empty to use the converted links folder.</div>
             </div>
             <UpdatesField auto={settings.checkForUpdates !== false} onAutoChange={value => {
               setSettings(state => ({ ...state, checkForUpdates: value }))

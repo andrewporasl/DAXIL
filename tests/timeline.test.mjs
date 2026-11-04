@@ -312,3 +312,14 @@ test('converted links never overwrite: name.mp4, then name (2).mp4', async () =>
     assert.equal(validateOutputPath(uniqueOutputPath(dir, 'x', 'video'), 'video'), path.join(dir, 'x.mp4'))
   } finally { fs.rmSync(dir, { recursive: true, force: true }) }
 })
+
+test('MP3 conversions use their own folder, everything else the converted-links folder', async () => {
+  const { convertDirFor } = await import('../shared/convertDir.ts')
+  const dirs = { convertOutputDir: '/conv', mp3OutputDir: '/spotify' }
+  assert.equal(convertDirFor('audio', dirs, '/dl'), '/spotify')
+  assert.equal(convertDirFor('video', dirs, '/dl'), '/conv')
+  assert.equal(convertDirFor('gif', dirs, '/dl'), '/conv')
+  assert.equal(convertDirFor('audio', { convertOutputDir: '/conv', mp3OutputDir: '   ' }, '/dl'), '/conv', 'a blank MP3 folder falls back')
+  assert.equal(convertDirFor('audio', {}, '/dl'), '/dl')
+  assert.equal(convertDirFor('gif', { mp3OutputDir: '/spotify' }, '/dl'), '/dl', 'the MP3 folder never catches GIFs')
+})
