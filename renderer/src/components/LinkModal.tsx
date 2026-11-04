@@ -67,7 +67,7 @@ export default function LinkModal({ url, defaultFormat, quick, onPool, onConvert
         <div className="link-choice is-convert">
           <span className="link-choice-icon"><Icon name="export" size={20} /></span>
           <b>Convert and save</b>
-          <span>Download it and save it straight to a file. Your project isn't touched.</span>
+          <span>Download it and save it straight to a file. Nothing is added to your project.</span>
           <div className="prop-segment link-choice-formats" role="radiogroup" aria-label="Convert to">
             {FORMATS.map(item => <button key={item.mode} role="radio" aria-checked={format === item.mode} className={format === item.mode ? 'is-on' : ''}
               onClick={() => setFormat(item.mode)} title={item.note}>{item.label}</button>)}

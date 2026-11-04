@@ -369,15 +369,17 @@ app.whenReady().then(async () => {
     assert.equal(path.dirname(exported.outputPath), path.join(work, 'converted'), 'conversions go to their own folder, no save dialog')
     assert.deepEqual(exported.clips.map(clip => [clip.startSeconds, clip.endSeconds]), [[0, 2]], 'the whole downloaded clip becomes the GIF')
     assert.equal((await ranges()).length, beforeLink + 1, 'quick GIF does not touch the timeline')
+    assert.ok(!(await js('Array.from(document.querySelectorAll(".media-asset"), a => a.textContent).join()')).includes('clip2'), 'a conversion does not land in the media pool')
+    await waitFor(() => discarded.some(file => file.endsWith('download2.mp4')), 'the converted download was not deleted')
 
     // After export, the result panel offers to delete the (temporary) link downloads.
     await waitFor(() => js('Boolean(document.querySelector(".cleanup-prompt"))'), 'no cleanup prompt after export')
-    assert.ok((await js('document.querySelector(".cleanup-prompt").textContent')).includes('Delete 2 downloaded clips'))
+    assert.ok((await js('document.querySelector(".cleanup-prompt").textContent')).includes('Delete 1 downloaded clip?'), 'only the pool download is offered for deletion')
     const poolWithDownloads = await js('document.querySelectorAll(".media-asset").length')
     await js(`document.querySelector('.cleanup-prompt .btn-danger').click()`)
     await waitFor(() => discarded.length === 2, `downloads were not discarded: ${JSON.stringify(discarded)}`)
     assert.ok(discarded.every(isDownload), 'only downloaded files are discarded')
-    assert.equal(await js('document.querySelectorAll(".media-asset").length'), poolWithDownloads - 2, 'downloads leave the pool')
+    assert.equal(await js('document.querySelectorAll(".media-asset").length'), poolWithDownloads - 1, 'downloads leave the pool')
     assert.equal((await ranges()).length, beforeLink, 'the downloaded clip leaves the timeline')
     await click('[aria-label="Undo edit"]')
     assert.ok(!(await js('Array.from(document.querySelectorAll(".media-asset"), a => a.textContent).join()')).includes('clip1'), 'undo cannot bring back a deleted download')
@@ -388,7 +390,7 @@ app.whenReady().then(async () => {
     await click('.link-box-add')
     await waitFor(() => js('Boolean(document.querySelector(".link-modal"))'), 'the link dialog did not open')
     await js(`document.querySelector('.link-modal button.link-choice').click()`)
-    await waitFor(async () => (await js('document.querySelectorAll(".media-asset").length')) === poolWithDownloads - 1, 'third download not added')
+    await waitFor(async () => (await js('document.querySelectorAll(".media-asset").length')) === poolWithDownloads, 'third download not added')
     await js(`window.confirm = () => true; document.querySelector('[aria-label="Remove clip3 from pool"]').click()`)
     await waitFor(() => discarded.length === 1 && discarded[0].endsWith('download3.mp4'), `removing a download did not delete it: ${JSON.stringify(discarded)}`)
 
@@ -433,6 +435,7 @@ app.whenReady().then(async () => {
     await waitFor(() => exported, 'convert to MP3 was not requested')
     assert.equal(exported.mode, 'audio')
     assert.equal(exported.outputPath, path.join(work, 'music', 'my song.mp3'))
+    assert.ok(!/clip4|clip5/.test(await js('Array.from(document.querySelectorAll(".media-asset"), a => a.textContent).join()')), 'conversions never land in the media pool')
     assert.equal((await ranges()).length, timelineBefore, 'converting does not touch the timeline')
 
     // MP4 picked while the MP3 folder differs: the step says where a sound-only link would go. Back returns.

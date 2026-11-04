@@ -338,8 +338,9 @@ export default function App() {
     if (result) await importPathsRef.current([result.filePath], { kind: 'video', track: 0, time: timelineEnd(clips) }, { [result.filePath]: result.title }, [result.filePath])
   }
   // One click to GIF: download, pick a file, encode the whole clip. Nothing touches the timeline.
-  // Convert a link straight to a file: download, pick where to save, encode the whole clip.
-  // Nothing touches the timeline. Sound-only links always become MP3.
+  // Convert a link straight to a file: download, encode the whole clip under the name the user gave.
+  // Nothing touches the timeline or the media pool, and the downloaded original is deleted afterwards.
+  // Sound-only links always become MP3.
   const handleLinkConvert = async (url: string, requested: ExportMode, name: string) => {
     if (downloading || exportState === 'running') return
     const result = await downloadFromLink(url)
@@ -348,8 +349,7 @@ export default function App() {
       const meta = await window.electronAPI.getMetadata(result.filePath)
       const hasVideo = meta.width > 0
       const mode: ExportMode = hasVideo ? requested : 'audio'
-      const asset: MediaAsset = { id: crypto.randomUUID(), kind: hasVideo ? 'video' : 'audio', metadata: meta, thumbnail: (await window.electronAPI.getThumbnails(result.filePath, meta.durationSeconds, 1).catch(() => []))[0], name: result.title, temporary: true }
-      setMedia(items => items.some(item => item.metadata.filePath === meta.filePath) ? items : [...items, asset])
+      const asset: MediaAsset = { id: crypto.randomUUID(), kind: hasVideo ? 'video' : 'audio', metadata: meta, name: result.title, temporary: true }
       if (mode === 'gif' && meta.durationSeconds > 60 && !window.confirm(`This clip is ${formatDuration(meta.durationSeconds)} long, which makes a very large GIF. Continue?`)) return
       const baseName = (name.trim() || result.title || meta.fileName.replace(/\.[^.]+$/, '')).replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'clip'
       const ext = mode === 'audio' ? 'mp3' : mode === 'gif' ? 'gif' : 'mp4'
@@ -365,6 +365,8 @@ export default function App() {
     } catch (error) {
       setExportError(previous => previous ?? (error instanceof Error ? error.message : String(error)))
       setExportState('error')
+    } finally {
+      void window.electronAPI.discardDownloads([result.filePath])
     }
   }
   // Every link (pasted anywhere or typed in the link box) asks first: edit it or just convert it.
