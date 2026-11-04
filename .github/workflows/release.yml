@@ -17,6 +17,8 @@ jobs:
   build:
     name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    # A healthy build takes under 10 minutes; GitHub's default would let a hung runner sit for 6 hours.
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -90,10 +92,12 @@ jobs:
         run: sudo mdutil -a -i off || true
 
       - name: Package app
+        timeout-minutes: 25
         run: ${{ matrix.command }}
 
       - name: Build DMG (retries hdiutil failures)
         if: runner.os == 'macOS'
+        timeout-minutes: 40
         run: bash scripts/build-mac-dmg.sh arm64
 
       - name: Upload build artifacts
