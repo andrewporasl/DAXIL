@@ -32,7 +32,8 @@ jobs:
               dist/latest*.yml
           - name: macOS arm64
             os: macos-14
-            command: npm run package:mac:arm64
+            # The app and zip first; the DMG gets its own retried step below (scripts/build-mac-dmg.sh).
+            command: npm run release:assets && npm run build && npx electron-builder --mac zip --arm64 --publish never
             artifact: DAXIL-macos-arm64
             files: |
               dist/*.dmg
@@ -83,8 +84,17 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      # Spotlight indexes each freshly mounted DMG staging image and can hold it past hdiutil's retries.
+      - name: Stop Spotlight indexing
+        if: runner.os == 'macOS'
+        run: sudo mdutil -a -i off || true
+
       - name: Package app
         run: ${{ matrix.command }}
+
+      - name: Build DMG (retries hdiutil failures)
+        if: runner.os == 'macOS'
+        run: bash scripts/build-mac-dmg.sh arm64
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
