@@ -27,7 +27,7 @@ Runs entirely on your machine.
 
 - **Import** by dropping files, `Ctrl+I`, or pasting a link (`Ctrl+V` anywhere).
 - **Phone and pro formats.** iPhone HEVC/HDR `.mov` (portrait handled), ProRes and Motion JPEG get a temporary preview copy automatically; export always uses the original.
-- **Links** from any site [yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) supports: YouTube, TikTok, Instagram, X, Reddit, Twitch, Vimeo, SoundCloud, Bandcamp and more. Each link asks: **add to media pool** to edit it, or **convert and save** it straight to MP4, MP3 or GIF in its own folder (set in Settings). **GIF** in the link box is a one-click shortcut.
+- **Links** from any site [yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) supports: YouTube, TikTok, Instagram, X, Reddit, Twitch, Vimeo, SoundCloud, Bandcamp and more. Each link asks: **add to media pool** to edit it, or **convert and save** it straight to MP4, MP3 or GIF. You name the file; MP4 and GIF go to the Converted links folder, MP3s to an MP3 folder you choose (handy for Spotify local files). **GIF** in the link box is a one-click shortcut.
 - **Temporary downloads.** Link downloads are deleted when you remove them, close the window, or choose **Delete** after export. Imported files are never touched.
 - **Multi-track timeline.** Free-form video and audio tracks, gaps, snapping, trim, split, rubber-band select, undo.
 - **Picture-in-picture.** Higher tracks draw on top; move, resize and fade clips in the preview or with the Transform strip.

@@ -7,6 +7,7 @@ import { readMetadata } from './ffprobe'
 import { runFFmpeg, cancelFFmpeg, generateThumbnails, gifPreview } from './ffmpeg'
 import { getDefaultBinarySetting, resolveBinaryPath, validateBinary } from './binaries'
 import { extensionForMode, uniqueOutputPath, validateOutputPath } from './output'
+import { convertDirFor } from '../shared/convertDir'
 import { cancelDownload, downloadLink, managedPath, updateYtDlp } from './downloader'
 import { makePreviewProxy } from './previewProxy'
 import { DOWNLOADS_ROOT, discardDownloads, downloadDirFor, downloadsUsage, trackDownload } from './tempDownloads'
@@ -108,9 +109,11 @@ export function registerIpcHandlers(): void {
     return result.canceled || !result.filePath ? null : validateOutputPath(result.filePath, mode)
   })
 
-  // "Convert and save" skips the save dialog: files go to the converted-links folder under a free name.
+  // "Convert and save" skips the save dialog: files go to the converted-links folder (MP3s to the
+  // MP3 folder, if set) under a free name. The folder always comes from settings, never the renderer.
+  const convertDirs = () => { const s = getStore(); return { convertOutputDir: String(s.get('convertOutputDir') ?? ''), mp3OutputDir: String(s.get('mp3OutputDir') ?? '') } }
   ipcMain.handle('convert:output-path', (_, mode: ExportOptions['mode'], name: string) => {
-    const dir = String(getStore().get('convertOutputDir', app.getPath('downloads')) || app.getPath('downloads'))
+    const dir = convertDirFor(mode, convertDirs(), app.getPath('downloads'))
     fs.mkdirSync(dir, { recursive: true })
     return validateOutputPath(uniqueOutputPath(dir, String(name ?? ''), mode), mode)
   })
@@ -184,6 +187,7 @@ export function registerIpcHandlers(): void {
       ytDlpPath: s.get('ytDlpPath', getDefaultBinarySetting()),
       defaultOutputDir: s.get('defaultOutputDir', app.getPath('videos')),
       convertOutputDir: s.get('convertOutputDir', app.getPath('downloads')),
+      mp3OutputDir: s.get('mp3OutputDir', ''),
       checkForUpdates: s.get('checkForUpdates', true)
     }
   })
@@ -195,6 +199,7 @@ export function registerIpcHandlers(): void {
     if (settings.ytDlpPath !== undefined) s.set('ytDlpPath', settings.ytDlpPath.trim() || getDefaultBinarySetting())
     if (settings.defaultOutputDir !== undefined) s.set('defaultOutputDir', settings.defaultOutputDir)
     if (settings.convertOutputDir !== undefined) s.set('convertOutputDir', settings.convertOutputDir.trim() || app.getPath('downloads'))
+    if (settings.mp3OutputDir !== undefined) { const dir = String(settings.mp3OutputDir).trim(); if (dir) s.set('mp3OutputDir', dir); else s.delete('mp3OutputDir') }
     if (settings.checkForUpdates !== undefined) s.set('checkForUpdates', Boolean(settings.checkForUpdates))
   })
 
@@ -226,11 +231,13 @@ export function registerIpcHandlers(): void {
     const ffprobe = resolveBinaryPath('ffprobe', s.get('ffprobePath', getDefaultBinarySetting()) as string)
     const usage = downloadsUsage()
     const exportsDir = s.get('defaultOutputDir', app.getPath('videos'))
-    const convertDir = String(s.get('convertOutputDir', app.getPath('downloads')) || app.getPath('downloads'))
+    const convertDir = convertDirFor('video', convertDirs(), app.getPath('downloads'))
+    const mp3Dir = convertDirFor('audio', convertDirs(), app.getPath('downloads'))
     const exists = (p: string) => path.isAbsolute(p) && fs.existsSync(p)
     return [
       { key: 'exports', label: 'Your exports', path: exportsDir, note: 'Your videos. Never deleted by DAXIL.', reveal: exportsDir, isFile: false, exists: exists(exportsDir) },
       { key: 'conversions', label: 'Converted links', path: convertDir, note: 'Files from "Convert and save". Never deleted by DAXIL.', reveal: convertDir, isFile: false, exists: exists(convertDir) },
+      { key: 'mp3', label: 'MP3 saves', path: mp3Dir, note: 'MP3s from "Convert and save". Never deleted by DAXIL.', reveal: mp3Dir, isFile: false, exists: exists(mp3Dir) },
       { key: 'downloads', label: 'Link downloads', path: DOWNLOADS_ROOT, note: usage.files ? `Temporary · ${usage.files} file${usage.files === 1 ? '' : 's'}, ${(usage.bytes / 1048576).toFixed(1)} MB right now` : 'Temporary · empty right now', reveal: DOWNLOADS_ROOT, isFile: false, exists: exists(DOWNLOADS_ROOT) },
       { key: 'scratch', label: 'Previews and size checks', path: os.tmpdir(), note: 'Temporary · daxil-preview-*, daxil-measure-* and daxil-proxies folders', reveal: os.tmpdir(), isFile: false, exists: true },
       { key: 'settings', label: 'Settings file', path: s.path, note: 'Your preferences', reveal: s.path, isFile: true, exists: exists(s.path) },

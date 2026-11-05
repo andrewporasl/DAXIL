@@ -144,6 +144,7 @@ export interface AppSettings {
   ytDlpPath: string
   defaultOutputDir: string
   convertOutputDir?: string   // where "Convert and save" puts files made straight from links
+  mp3OutputDir?: string       // where MP3s made straight from a link go; empty = convertOutputDir
   checkForUpdates?: boolean
 }
 
