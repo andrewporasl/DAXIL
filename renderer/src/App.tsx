@@ -6,6 +6,7 @@ import type {
 } from '../../shared/types'
 import MediaPool from './components/MediaPool'
 import { exportPlan, sliceTimeline, soundOnly } from '../../shared/exportPlan'
+import { errorText } from '../../shared/errorText'
 import Editor, { type SelectMode } from './components/Editor'
 import Inspector from './components/Inspector'
 import ClipProperties from './components/ClipProperties'
@@ -200,7 +201,7 @@ export default function App() {
       try {
         const proxy = await window.electronAPI.makePreviewProxy(file)
         setPreviewPaths(map => ({ ...map, [file]: proxy }))
-      } catch (error) { setMetaError(`${assetName(asset)} imported, but its preview couldn't be prepared. It will still export. ${error instanceof Error ? error.message : ''}`) }
+      } catch (error) { setMetaError(`${assetName(asset)} imported, but its preview couldn't be prepared. It will still export. ${errorText(error)}`) }
       finally { setPreparing(list => list.filter(name => name !== assetName(asset))) }
     }
   }
@@ -331,7 +332,7 @@ export default function App() {
     setDownloading(true)
     setDownloadProgress({ phase: 'media', percent: null, message: 'Starting…' })
     try { return await window.electronAPI.downloadLink(url) }
-    catch (error) { setDownloadError(error instanceof Error ? error.message : String(error)); return null }
+    catch (error) { setDownloadError(errorText(error)); return null }
     finally { setDownloading(false); setDownloadProgress(null) }
   }
   const handleLinkAdd = async (url: string) => {
@@ -366,7 +367,7 @@ export default function App() {
         compressionLevel: 'none', muteAudio: mode === 'gif' || !sound, mp3Bitrate, gifScale, gifFps, playbackRate: 1
       })
     } catch (error) {
-      setExportError(previous => previous ?? (error instanceof Error ? error.message : String(error)))
+      setExportError(previous => previous ?? (errorText(error)))
       setExportState('error')
     } finally {
       void window.electronAPI.discardDownloads([result.filePath])
@@ -501,7 +502,7 @@ export default function App() {
     measureCancelled.current = false
     setMeasuring(true)
     try { setMeasurement({ key: estimateKey, bytes: await window.electronAPI.measureExport(await withText(exportOptions)) }) }
-    catch (error) { if (!measureCancelled.current) { setExportError(error instanceof Error ? error.message : String(error)); setExportState('error') } }
+    catch (error) { if (!measureCancelled.current) { setExportError(errorText(error)); setExportState('error') } }
     finally { setMeasuring(false) }
   }
   const handleExport = useCallback(async () => {
@@ -520,7 +521,7 @@ export default function App() {
       setExportState('running'); setProgress(null); setFfmpegLog([]); setResult(null); setExportError(null); setResultIsConversion(false)
       await window.electronAPI.runFFmpeg(await withText({ ...exportOptions, outputFileName, outputPath }))
     } catch (error) {
-      setExportError(previous => previous ?? (error instanceof Error ? error.message : String(error)))
+      setExportError(previous => previous ?? (errorText(error)))
       setExportState('error')
     }
   }, [project, source, clips, playbackRate, muteAudio, compressionLevel, crop, effectiveMode, outputDir, estimateKey])
@@ -538,14 +539,14 @@ export default function App() {
       const rendered = await window.electronAPI.previewVideo(await withText({ ...exportOptions, mode: 'video', clips: sliceTimeline(clips, start, length) }))
       const quality = compressionLevel === 'none' ? 'Best quality' : `${compressionLevel}% smaller`
       setVideoPreview({ ...rendered, start, end: start + length, width: project.width, height: project.height, quality })
-    } catch (error) { setExportError(error instanceof Error ? error.message : String(error)); setExportState('error') }
+    } catch (error) { setExportError(errorText(error)); setExportState('error') }
     finally { setIsGeneratingVideoPreview(false) }
   }
   const handleGifPreview = useCallback(async () => {
     if (!project || !source) return
     setIsGeneratingGifPreview(true)
     try { setGifPreviewUrl(await window.electronAPI.previewGif(await withText({ ...exportOptions, mode: 'gif', compressionLevel: 'none', muteAudio: false }))) }
-    catch (error) { setExportError(error instanceof Error ? error.message : String(error)); setExportState('error') }
+    catch (error) { setExportError(errorText(error)); setExportState('error') }
     finally { setIsGeneratingGifPreview(false) }
   }, [project, source, estimateKey])
 

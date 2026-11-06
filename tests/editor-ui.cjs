@@ -32,7 +32,7 @@ app.whenReady().then(async () => {
     // Like the real downloader, every link gives a fresh file, which the app treats as temporary.
     let downloads = 0
     const isDownload = file => path.basename(file).startsWith('download')
-    ipcMain.handle('download:start', () => { const file = path.join(work, `download${++downloads}.mp4`); fs.copyFileSync(secondSource, file); return { filePath: file, title: `clip${downloads}` } })
+    ipcMain.handle('download:start', (_, url) => { if (String(url).includes('/hidden/')) throw new Error('That post is hidden.'); const file = path.join(work, `download${++downloads}.mp4`); fs.copyFileSync(secondSource, file); return { filePath: file, title: `clip${downloads}` } })
     let discarded = []
     ipcMain.handle('download:discard', (_, files) => { discarded.push(...files); return files.length })
     ipcMain.handle('download:cancel', () => {})
@@ -339,6 +339,14 @@ app.whenReady().then(async () => {
     assert.ok((await js('document.querySelector(".preview-modal").textContent')).includes('320 × 180'))
     await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
     await waitFor(() => js('!document.querySelector(".preview-modal")'), 'Escape did not close the preview')
+
+    // A failed download shows only the reason, not Electron's "Error invoking remote method" wrapper.
+    await setInput('.link-box-input', 'https://x.com/hidden/status/1')
+    await click('.link-box-add')
+    await waitFor(() => js('Boolean(document.querySelector(".link-modal"))'), 'the link dialog did not open')
+    await js(`document.querySelector('.link-modal button.link-choice').click()`)
+    await waitFor(() => js('Boolean(document.querySelector(".link-box-error"))'), 'the download error was not shown')
+    assert.equal(await js('document.querySelector(".link-box-error").textContent'), 'That post is hidden.', 'download errors drop the IPC wrapper')
 
     // Paste a link: a dialog asks whether to edit it or convert it. Into the pool, it lands at the end of V1;
     // GIF goes straight to the converted-links folder.

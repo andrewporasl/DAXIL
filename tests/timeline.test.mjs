@@ -6,6 +6,7 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { buildTimelineGraph } from '../main/ffmpegGraph.ts'
 import { exportPlan, sliceTimeline, soundOnly, timelineSpan } from '../shared/exportPlan.ts'
+import { errorText } from '../shared/errorText.ts'
 import { friendlyDownloadError, nextClipName, normalizeLink, parseProgressLine, ytDlpArgs, ytDlpAssetName } from '../main/downloaderCore.ts'
 
 const clip = (over = {}) => ({ id: 'c', mediaId: 'a', kind: 'video', track: 0, timelineStart: 0, startSeconds: 0, endSeconds: 2, x: 0, y: 0, scale: 1, opacity: 1, volume: 1, muted: false, ...over })
@@ -85,6 +86,9 @@ test('links are validated before anything is spawned', () => {
   assert.equal(parseProgressLine('[youtube] abc: Downloading webpage'), null)
   assert.equal(friendlyDownloadError('ERROR: [youtube] abc: Private video. Sign in if you have been granted access'), 'That video is private.')
   assert.equal(friendlyDownloadError('ERROR: Unsupported URL: https://example.com'), 'That site is not supported.')
+  const hiddenTweet = friendlyDownloadError('ERROR: [twitter] 2113363098644234620: No video could be found in this tweet')
+  assert.match(hiddenTweet, /sensitive/, 'X hides sensitive posts from logged-out viewers; say so instead of "no video"')
+  assert.doesNotMatch(hiddenTweet, /^\[twitter\]/)
   assert.equal(nextClipName([]), 'clip1')
   assert.equal(nextClipName(['clip1.mp4', 'clip3.mp4', 'clip2.part', 'notes.txt', 'clipart.mp4']), 'clip4', 'downloads get the next generic number, never a title')
   assert.equal(ytDlpAssetName('win32'), 'yt-dlp.exe')
@@ -322,4 +326,12 @@ test('MP3 conversions use their own folder, everything else the converted-links 
   assert.equal(convertDirFor('audio', { convertOutputDir: '/conv', mp3OutputDir: '   ' }, '/dl'), '/conv', 'a blank MP3 folder falls back')
   assert.equal(convertDirFor('audio', {}, '/dl'), '/dl')
   assert.equal(convertDirFor('gif', { mp3OutputDir: '/spotify' }, '/dl'), '/dl', 'the MP3 folder never catches GIFs')
+})
+
+test('errorText drops the Electron IPC wrapper so people see only the real message', () => {
+  const wrapped = new Error("Error invoking remote method 'download:start': Error: That video is private.")
+  assert.equal(errorText(wrapped), 'That video is private.')
+  assert.equal(errorText(new Error('Plain failure')), 'Plain failure')
+  assert.equal(errorText('a string'), 'a string')
+  assert.equal(errorText(new Error("Error invoking remote method 'x': TypeError: bad")), 'bad')
 })

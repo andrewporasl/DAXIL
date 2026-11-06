@@ -63,6 +63,9 @@ export function friendlyDownloadError(stderr: string): string {
   if (/sign in to confirm|age-restricted|age restricted|login required|requires authentication/.test(text)) return 'That link needs a signed-in account, which DAXIL cannot provide.'
   if (/not available in your country|geo.?restrict|blocked it in your country/.test(text)) return 'That video is not available in your region.'
   if (/unsupported url/.test(text)) return 'That site is not supported.'
+  // X answers logged-out requests for posts marked sensitive (and protected or deleted ones) with an
+  // empty placeholder, which yt-dlp reports as "No video could be found in this tweet".
+  if (/no video could be found in this tweet/.test(text)) return 'X didn\'t share a video for that post. Posts marked sensitive, from private accounts, or deleted are hidden from people who aren\'t signed in, and DAXIL downloads without signing in. If the post has no video, there is nothing to download.'
   if (/video unavailable|has been removed|does not exist|404/.test(text)) return 'That video is unavailable or has been removed.'
   if (/getaddrinfo|network is unreachable|unable to download webpage|connection|timed out/.test(text)) return 'Could not reach that site. Check your connection.'
   if (/no video formats found|requested format is not available/.test(text)) return 'No downloadable video was found at that link.'

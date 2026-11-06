@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import type { AppSettings, StorageLocation } from '@shared/types'
+import { errorText } from '@shared/errorText'
 import Icon from './Icon'
 import { updateSummary, useUpdateStatus } from '../lib/updates'
 
@@ -73,7 +74,7 @@ export default function SettingsModal({ onClose }: Props) {
   const handleUpdateTool = async () => {
     setUpdating(true); setToolStatus(null)
     try { setToolStatus(await window.electronAPI.updateDownloader()) }
-    catch (error) { setToolStatus(error instanceof Error ? error.message : String(error)) }
+    catch (error) { setToolStatus(errorText(error)) }
     finally { setUpdating(false) }
   }
   const handleSave = async () => {
