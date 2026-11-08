@@ -33,7 +33,7 @@ jobs:
               dist/*.blockmap
               dist/latest*.yml
           - name: macOS arm64
-            os: macos-14
+            os: macos-15
             # The app and zip first; the DMG gets its own retried step below (scripts/build-mac-dmg.sh).
             command: npm run release:assets && npm run build && npx electron-builder --mac zip --arm64 --publish never
             artifact: DAXIL-macos-arm64
