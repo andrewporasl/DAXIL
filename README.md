@@ -113,10 +113,8 @@ Runs entirely on your machine.
 Get the installer for your platform from [Releases](https://github.com/andrewporasl/DAXIL/releases):
 
 - Windows: `DAXIL-<version>-win-x64.exe`
-- macOS (Apple Silicon): `DAXIL-<version>-mac-arm64.dmg` (see the note below)
+- macOS (Apple Silicon): `DAXIL-<version>-mac-arm64.dmg`
 - Linux: `DAXIL-<version>-linux-x86_64.AppImage`
-
-> **macOS:** the Mac build is having trouble packaging right now, so 0.4.0 ships for Windows and Linux only. A Mac download will follow in a patch release (0.4.x) as soon as it's sorted out. Thanks for your patience!
 
 Builds are unsigned: on macOS use right-click → Open (or **System Settings → Privacy & Security → Open Anyway**); on Windows, confirm the SmartScreen prompt. More in [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
